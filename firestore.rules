@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /canchas/{canchaId} {
+      allow read: if true;
+      // Permitir escritura sin autenticación solo para scripts de seed
+      // En producción, cambiar a: allow write: if request.auth != null;
+      allow write: if true;
+    }
+    
+    match /horarios/{horarioId} {
+      allow read: if true;
+      // Permitir escritura sin autenticación solo para scripts de seed
+      // En producción, cambiar a: allow write: if request.auth != null;
+      allow write: if true;
+    }
+    
+    match /reservas/{reservaId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.idUsuario || 
+         get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.esAdmin == true);
+    }
+    
+    match /usuarios/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /homeContent/{documentId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.esAdmin == true;
+    }
+    
+    match /descuentos/{descuentoId} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null && 
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.esAdmin == true;
+    }
+    
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "canchas": [
+    {
+      "nombre": "MARACANAZO",
+      "tipo": "futbol",
+      "tamano": "grande",
+      "descripcion": "Cancha de fútbol profesional - urb. las joyas S/N, Puerto Maldonado, Peru",
+      "ubicacion": "urb. las joyas S/N, Puerto Maldonado, Peru",
+      "precios": {
+        "manana": {
+          "inicio": "07:00",
+          "fin": "17:00",
+          "precio": 40
+        },
+        "noche": {
+          "inicio": "17:00",
+          "fin": "00:00",
+          "precio": 80
+        }
+      },
+      "preciosSemanales": {
+        "lunes": {
+          "manana": {
+            "inicio": "07:00",
+            "fin": "17:00",
+            "precio": 40
+          },
+          "noche": {
+            "inicio": "17:00",
+            "fin": "00:00",
+            "precio": 80
+          }
+        },
+        "martes": {
+          "manana": {
+            "inicio": "07:00",
+            "fin": "17:00",
+            "precio": 40
+          },
+          "noche": {
+            "inicio": "17:00",
+            "fin": "00:00",
+            "precio": 80
+          }
+        },
+        "miercoles": {
+          "manana": {
+            "inicio": "07:00",
+            "fin": "17:00",
+            "precio": 40
+          },
+          "noche": {
+            "inicio": "17:00",
+            "fin": "00:00",
+            "precio": 80
+          }
+        },
+        "jueves": {
+          "manana": {
+            "inicio": "07:00",
+            "fin": "17:00",
+            "precio": 40
+          },
+          "noche": {
+            "inicio": "17:00",
+            "fin": "00:00",
+            "precio": 80
+          }
+        },
+        "viernes": {
+          "manana": {
+            "inicio": "07:00",
+            "fin": "17:00",
+            "precio": 40
+          },
+          "noche": {
+            "inicio": "17:00",
+            "fin": "00:00",
+            "precio": 80
+          }
+        },
+        "sabado": {
+          "manana": {
+            "inicio": "07:00",
+            "fin": "17:00",
+            "precio": 40
+          },
+          "noche": {
+            "inicio": "17:00",
+            "fin": "00:00",
+            "precio": 80
+          }
+        },
+        "domingo": {
+          "manana": {
+            "inicio": "07:00",
+            "fin": "17:00",
+            "precio": 40
+          },
+          "noche": {
+            "inicio": "17:00",
+            "fin": "00:00",
+            "precio": 80
+          }
+        }
+      },
+      "precio": 40,
+      "imagen": "/images/futbol1.jpg",
+      "activo": true
+    }
+  ],
+  "config": {
+    "horarios": {
+      "diasParaCrear": 30,
+      "horaInicio": 7,
+      "horaFin": 24,
+      "duracion": 2
+    }
+  }
+}
