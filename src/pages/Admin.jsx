@@ -56,7 +56,7 @@ const Admin = () => {
     try {
       const [usersData, canchasData, reservasData] = await Promise.all([
         userRepository.getAll(),
-        canchaRepository.getAll(),
+        canchaRepository.getAllForAdmin(),
         reservaRepository.getAll()
       ]);
 
@@ -397,23 +397,23 @@ const Admin = () => {
                     {canchas.map(cancha => (
                       <Card key={cancha.id} className="h-full p-4">
                         <div className="flex items-start justify-between mb-2">
-                          <h5 className="m-0">{cancha.name}</h5>
-                          <Chip color={cancha.isActive ? 'success' : 'default'} size="sm">
-                            {cancha.isActive ? 'Activa' : 'Inactiva'}
+                          <h5 className="m-0">{cancha.nombre || 'Sin nombre'}</h5>
+                          <Chip color={cancha.activo ? 'success' : 'default'} size="sm">
+                            {cancha.activo ? 'Activa' : 'Inactiva'}
                           </Chip>
                         </div>
-                        <p className="text-gray-500 text-sm mb-2">{cancha.description}</p>
+                        <p className="text-gray-500 text-sm mb-2">{cancha.descripcion || 'Sin descripción'}</p>
                         <div className="mb-3">
-                          {cancha.pricing ? (
+                          {cancha.precios ? (
                             <div className="text-sm">
                               <div className="font-semibold text-success mb-1">Precios por horario:</div>
-                              <div>7am-5pm: {formatCurrency(cancha.pricing.morning?.price || 0)}</div>
-                              <div>5pm-12am: {formatCurrency(cancha.pricing.evening?.price || 0)}</div>
+                              <div>{cancha.precios.manana?.inicio || '07:00'}-{cancha.precios.manana?.fin || '17:00'}: {formatCurrency(cancha.precios.manana?.precio || 0)}</div>
+                              <div>{cancha.precios.noche?.inicio || '17:00'}-{cancha.precios.noche?.fin || '00:00'}: {formatCurrency(cancha.precios.noche?.precio || 0)}</div>
                             </div>
                           ) : (
                             <div className="flex items-center justify-between">
-                              <span className="font-semibold text-success">{formatCurrency(cancha.price)}</span>
-                              <small className="text-gray-500">{cancha.type}</small>
+                              <span className="font-semibold text-success">{formatCurrency(cancha.precio || 0)}</span>
+                              <small className="text-gray-500">{cancha.tipo || 'N/A'}</small>
                             </div>
                           )}
                         </div>

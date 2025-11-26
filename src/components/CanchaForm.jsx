@@ -61,25 +61,54 @@ const CanchaForm = ({ isOpen, onClose, cancha = null, onSuccess }) => {
 
   useEffect(() => {
     if (cancha) {
+      const precios = cancha.precios || cancha.pricing;
+      const preciosSemanales = cancha.preciosSemanales || cancha.weeklyPricing;
+      
       setFormData({
-        name: cancha.name || '',
-        type: cancha.type || 'futbol',
-        size: cancha.size || 'grande',
-        description: cancha.description || '',
-        price: cancha.price || 0,
-        image: cancha.image || cancha.imagePrincipal || '',
-        imagePrincipal: cancha.imagePrincipal || cancha.image || '',
-        imageCard: cancha.imageCard || '',
-        image1: cancha.image1 || '',
-        image2: cancha.image2 || '',
-        isActive: cancha.isActive !== undefined ? cancha.isActive : true,
-        pricing: cancha.pricing || {
+        name: cancha.nombre || cancha.name || '',
+        type: cancha.tipo || cancha.type || 'futbol',
+        size: cancha.tamano || cancha.size || 'grande',
+        description: cancha.descripcion || cancha.description || '',
+        price: cancha.precio || cancha.price || 0,
+        image: cancha.imagen || cancha.imagePrincipal || cancha.image || '',
+        imagePrincipal: cancha.imagenPrincipal || cancha.imagen || cancha.imagePrincipal || cancha.image || '',
+        imageCard: cancha.imagenTarjeta || cancha.imagenCard || cancha.imageCard || '',
+        image1: cancha.imagen1 || cancha.image1 || '',
+        image2: cancha.imagen2 || cancha.image2 || '',
+        isActive: cancha.activo !== undefined ? cancha.activo : (cancha.isActive !== undefined ? cancha.isActive : true),
+        pricing: precios ? {
+          morning: { 
+            start: precios.manana?.inicio || precios.morning?.start || '07:00', 
+            end: precios.manana?.fin || precios.morning?.end || '17:00', 
+            price: precios.manana?.precio || precios.morning?.price || 0 
+          },
+          evening: { 
+            start: precios.noche?.inicio || precios.evening?.start || '17:00', 
+            end: precios.noche?.fin || precios.evening?.end || '00:00', 
+            price: precios.noche?.precio || precios.evening?.price || 0 
+          }
+        } : (cancha.pricing || {
           morning: { start: '07:00', end: '17:00', price: 0 },
           evening: { start: '17:00', end: '00:00', price: 0 }
-        },
-        weeklyPricing: cancha.weeklyPricing || null
+        }),
+        weeklyPricing: preciosSemanales ? Object.keys(preciosSemanales).reduce((acc, day) => {
+          const dayPricing = preciosSemanales[day];
+          acc[day] = {
+            morning: {
+              start: dayPricing.manana?.inicio || dayPricing.morning?.start || '07:00',
+              end: dayPricing.manana?.fin || dayPricing.morning?.end || '17:00',
+              price: dayPricing.manana?.precio || dayPricing.morning?.price || 0
+            },
+            evening: {
+              start: dayPricing.noche?.inicio || dayPricing.evening?.start || '17:00',
+              end: dayPricing.noche?.fin || dayPricing.evening?.end || '00:00',
+              price: dayPricing.noche?.precio || dayPricing.evening?.price || 0
+            }
+          };
+          return acc;
+        }, {}) : (cancha.weeklyPricing || null)
       });
-      setUseWeeklyPricing(!!cancha.weeklyPricing);
+      setUseWeeklyPricing(!!preciosSemanales || !!cancha.weeklyPricing);
     } else {
       resetForm();
     }
@@ -234,10 +263,49 @@ const CanchaForm = ({ isOpen, onClose, cancha = null, onSuccess }) => {
 
     setLoading(true);
     try {
+      const weeklyPricingConverted = useWeeklyPricing && formData.weeklyPricing ? 
+        Object.keys(formData.weeklyPricing).reduce((acc, day) => {
+          const dayPricing = formData.weeklyPricing[day];
+          acc[day] = {
+            manana: {
+              inicio: dayPricing.morning.start,
+              fin: dayPricing.morning.end,
+              precio: dayPricing.morning.price
+            },
+            noche: {
+              inicio: dayPricing.evening.start,
+              fin: dayPricing.evening.end,
+              precio: dayPricing.evening.price
+            }
+          };
+          return acc;
+        }, {}) : null;
+
       const canchaData = {
-        ...formData,
-        weeklyPricing: useWeeklyPricing ? formData.weeklyPricing : null,
-        image: formData.imagePrincipal || formData.image
+        nombre: formData.name,
+        tipo: formData.type,
+        tamano: formData.size,
+        descripcion: formData.description,
+        precio: formData.price,
+        imagen: formData.imagePrincipal || formData.image,
+        imagenPrincipal: formData.imagePrincipal || formData.image,
+        imagenTarjeta: formData.imageCard,
+        imagen1: formData.image1,
+        imagen2: formData.image2,
+        activo: formData.isActive,
+        precios: {
+          manana: {
+            inicio: formData.pricing.morning.start,
+            fin: formData.pricing.morning.end,
+            precio: formData.pricing.morning.price
+          },
+          noche: {
+            inicio: formData.pricing.evening.start,
+            fin: formData.pricing.evening.end,
+            precio: formData.pricing.evening.price
+          }
+        },
+        preciosSemanales: weeklyPricingConverted
       };
 
       let savedCancha;
@@ -543,7 +611,12 @@ const CanchaForm = ({ isOpen, onClose, cancha = null, onSuccess }) => {
           <Button variant="light" onPress={onClose}>
             Cancelar
           </Button>
-          <Button color="primary" onPress={handleSubmit} isLoading={loading}>
+          <Button 
+            variant="bordered" 
+            className="bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
+            onPress={handleSubmit} 
+            isLoading={loading}
+          >
             {cancha ? 'Guardar Cambios' : 'Crear Cancha'}
           </Button>
         </ModalFooter>

@@ -14,11 +14,48 @@ const Reserva = () => {
   const navigate = useNavigate();
   const [cancha, setCancha] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [selectedDay, setSelectedDay] = useState(null);
   const [reservationData, setReservationData] = useState({
     date: '',
     duration: '2',
     notes: ''
   });
+
+  const daysOfWeek = [
+    { key: 'lunes', label: 'Lunes', dayIndex: 1 },
+    { key: 'martes', label: 'Martes', dayIndex: 2 },
+    { key: 'miercoles', label: 'Miércoles', dayIndex: 3 },
+    { key: 'jueves', label: 'Jueves', dayIndex: 4 },
+    { key: 'viernes', label: 'Viernes', dayIndex: 5 },
+    { key: 'sabado', label: 'Sábado', dayIndex: 6 },
+    { key: 'domingo', label: 'Domingo', dayIndex: 0 }
+  ];
+
+  const getDateForDay = (dayIndex) => {
+    const today = new Date();
+    const currentDay = today.getDay();
+    let daysUntilTarget = dayIndex - currentDay;
+    
+    if (daysUntilTarget <= 0) {
+      daysUntilTarget += 7;
+    }
+    
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + daysUntilTarget);
+    return targetDate.toISOString().split('T')[0];
+  };
+
+  const formatDateDisplay = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-PE', { day: 'numeric', month: 'short' });
+  };
+
+  const formatTime12h = (time24h) => {
+    const [hours, minutes] = time24h.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
   const [loading, setLoading] = useState(false);
   const [loadingCancha, setLoadingCancha] = useState(true);
   const [loadingHorarios, setLoadingHorarios] = useState(false);
@@ -35,12 +72,16 @@ const Reserva = () => {
   useEffect(() => {
     loadCancha();
     
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const today = new Date();
+    const currentDayIndex = today.getDay();
+    const tomorrowDayIndex = currentDayIndex === 6 ? 0 : currentDayIndex + 1;
+    const tomorrowDay = daysOfWeek.find(d => d.dayIndex === tomorrowDayIndex) || daysOfWeek[0];
+    
+    setSelectedDay(tomorrowDay.key);
+    const tomorrowDate = getDateForDay(tomorrowDayIndex);
     setReservationData(prev => ({
       ...prev,
-      date: tomorrowStr
+      date: tomorrowDate
     }));
   }, [id]);
 
@@ -347,16 +388,72 @@ const Reserva = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-10">
       <div className="mx-auto max-w-7xl px-4">
-        <div className="text-center mb-10">
-          <h1 className="text-3xl md:text-4xl font-bold">Reservar {cancha.nombre}</h1>
-          <p className="text-lg text-gray-600">Selecciona tu horario preferido y completa los datos</p>
+        <div className="text-center mb-6">
+          <h1 className="text-xl md:text-2xl font-bold">Reservar {cancha.nombre}</h1>
+          <p className="text-sm text-gray-600">Selecciona tu horario preferido y completa los datos</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-8">
+            <Card className="p-0 mb-6">
+              <div className="border-b px-4 py-3 bg-gray-50">
+                <h3 className="m-0 text-lg font-semibold">Selecciona el Día</h3>
+                <p className="text-sm text-gray-600 m-0 mt-1">Elige el día de la semana para ver los horarios disponibles</p>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2 md:gap-3">
+                  {daysOfWeek.map((day) => {
+                    const dayDate = getDateForDay(day.dayIndex);
+                    const isSelected = selectedDay === day.key;
+                    const isToday = new Date().getDay() === day.dayIndex;
+                    
+                    return (
+                      <button
+                        key={day.key}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDay(day.key);
+                          setSelectedSlot(null);
+                          setReservationData(prev => ({
+                            ...prev,
+                            date: dayDate
+                          }));
+                        }}
+                        className={`p-3 md:p-4 rounded-lg border-2 transition-all text-center min-h-[90px] flex flex-col items-center justify-center ${
+                          isSelected
+                            ? 'border-green-500 bg-green-50 shadow-md scale-105'
+                            : 'border-gray-200 bg-white hover:border-green-300 hover:bg-green-50 hover:shadow-sm'
+                        }`}
+                        aria-pressed={isSelected}
+                      >
+                        {isToday && (
+                          <span className={`text-xs font-semibold mb-1 px-2 py-0.5 rounded-full ${
+                            isSelected ? 'bg-green-200 text-green-800' : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            Hoy
+                          </span>
+                        )}
+                        <div className={`text-sm md:text-base font-bold mb-1 ${isSelected ? 'text-green-700' : 'text-gray-900'}`}>
+                          {day.label}
+                        </div>
+                        <div className={`text-xs ${isSelected ? 'text-green-600 font-medium' : 'text-gray-500'}`}>
+                          {formatDateDisplay(dayDate)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </Card>
+
             <Card className="p-0">
               <div className="border-b px-4 py-3">
                 <h3 className="m-0 text-lg font-semibold">Horarios Disponibles</h3>
+                {selectedDay && (
+                  <p className="text-sm text-gray-600 m-0 mt-1">
+                    {daysOfWeek.find(d => d.key === selectedDay)?.label} - {formatDateDisplay(reservationData.date)}
+                  </p>
+                )}
               </div>
               <div className="p-4">
                 {loadingHorarios ? (
@@ -365,23 +462,55 @@ const Reserva = () => {
                     <span className="ml-3">Cargando horarios...</span>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {timeSlots.map((slot, index) => (
-                    <Card
-                      key={index}
-                      className={`p-4 text-center cursor-pointer transition-all ${
-                        !slot.available ? 'border-red-300 bg-red-50 opacity-50' : 
-                        selectedSlot?.time === slot.time ? 'border-green-500 bg-green-50 ring-2 ring-green-300' : 
-                        'hover:border-green-300 hover:bg-green-50'
-                      }`}
-                      onClick={() => handleSlotSelect(slot)}
-                    >
-                      <h5 className="font-semibold mb-2">{slot.time}</h5>
-                      <Chip color={slot.available ? 'success' : 'danger'} size="sm" className="mb-2">
-                        {slot.available ? 'Disponible' : 'Ocupado'}
-                      </Chip>
-                      <p className="text-lg font-bold text-success m-0">S/ {slot.price}</p>
-                    </Card>
+                      <button
+                        key={index}
+                        type="button"
+                        disabled={!slot.available}
+                        onClick={() => {
+                          if (slot.available) {
+                            handleSlotSelect(slot);
+                          }
+                        }}
+                        className={`p-3 rounded-lg border-2 transition-all text-left flex items-center justify-between ${
+                          !slot.available 
+                            ? 'border-green-700 bg-green-800 cursor-not-allowed' 
+                            : selectedSlot?.time === slot.time 
+                            ? 'border-green-500 bg-green-50 ring-2 ring-green-300 shadow-md' 
+                            : 'border-gray-200 bg-white hover:border-green-300 hover:bg-green-50 hover:shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`text-base font-bold ${
+                            !slot.available 
+                              ? 'text-white' 
+                              : selectedSlot?.time === slot.time 
+                              ? 'text-green-700' 
+                              : 'text-gray-900'
+                          }`}>
+                            {formatTime12h(slot.time)}
+                          </div>
+                          {slot.available ? (
+                            <span className="px-2 py-0.5 rounded-full bg-green-500 text-white text-xs font-medium">
+                              Disponible
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-green-900 text-white text-xs font-medium border border-green-700">
+                              Ocupado
+                            </span>
+                          )}
+                        </div>
+                        <div className={`text-base font-bold ${
+                          !slot.available 
+                            ? 'text-white opacity-75' 
+                            : selectedSlot?.time === slot.time 
+                            ? 'text-green-700' 
+                            : 'text-success'
+                        }`}>
+                          S/ {slot.price}
+                        </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -395,6 +524,15 @@ const Reserva = () => {
                 <h3 className="m-0 text-lg font-semibold">Detalles de la Reserva</h3>
               </div>
               <div className="p-4">
+                <div className="mb-4">
+                  <img 
+                    src={cancha.imagenPrincipal || cancha.imagen || '/images/futbol1.jpg'}
+                    alt={cancha.nombre}
+                    className="w-full h-48 object-cover rounded-lg mb-3"
+                  />
+                  <h4 className="font-semibold text-lg mb-1">{cancha.nombre}</h4>
+                  <p className="text-sm text-gray-600 mb-0">{cancha.descripcion}</p>
+                </div>
                 {selectedSlot && (
                   <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
                     <div className="font-semibold">Horario Seleccionado</div>
@@ -414,17 +552,38 @@ const Reserva = () => {
                     isRequired
                   />
 
-                  <Select
-                    label="Duración (horas)"
-                    name="duration"
-                    selectedKeys={[String(reservationData.duration)]}
-                    onChange={handleInputChange}
-                  >
-                    <SelectItem key="1" value="1">1 hora</SelectItem>
-                    <SelectItem key="2" value="2">2 horas</SelectItem>
-                    <SelectItem key="3" value="3">3 horas</SelectItem>
-                    <SelectItem key="4" value="4">4 horas</SelectItem>
-                  </Select>
+                  <div>
+                    <Select
+                      label="Duración (horas)"
+                      name="duration"
+                      selectedKeys={[String(reservationData.duration)]}
+                      onSelectionChange={(keys) => {
+                        const duration = Array.from(keys)[0];
+                        handleInputChange({ target: { name: 'duration', value: duration } });
+                      }}
+                    >
+                      <SelectItem key="1" value="1">
+                        1 hora
+                      </SelectItem>
+                      <SelectItem key="2" value="2">
+                        2 horas
+                      </SelectItem>
+                      <SelectItem key="3" value="3">
+                        3 horas
+                      </SelectItem>
+                      <SelectItem key="4" value="4">
+                        4 horas
+                      </SelectItem>
+                    </Select>
+                    {selectedSlot && reservationData.duration && (
+                      <div className="mt-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <p className="text-sm font-semibold text-blue-900 mb-1">Rango de alquiler:</p>
+                        <p className="text-base font-bold text-blue-700">
+                          {selectedSlot.time} - {calculateEndTime(selectedSlot.time, Number.parseInt(reservationData.duration, 10))}
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                   <Textarea
                     name="notes"

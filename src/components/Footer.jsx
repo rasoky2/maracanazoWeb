@@ -18,8 +18,7 @@ const Footer = () => {
           <div className="md:col-span-1">
             <h5 className="fw-bold mb-3">Maracanazo</h5>
             <p className="text-light">
-              El corazón palpitante del entretenimiento, deportes y comunidad. 
-              Construido para inspirar y diseñado para el futuro.
+              Web dedicada a reservas en tiempo real.
             </p>
             <div className="flex gap-3 flex-wrap">
               <a 
@@ -85,7 +84,7 @@ const Footer = () => {
                    style={{ width: '40px', height: '40px' }}>
                 <FaMapMarkerAlt size={20} className="text-white" />
               </div>
-              <span className="text-light">Av. Principal 123, Lima, Perú</span>
+              <span className="text-light">urb. las joyas S/N, Puerto Maldonado, Peru</span>
             </div>
             <div className="flex items-center mb-3">
               <div className="bg-success rounded-full flex items-center justify-center mr-3" 

@@ -63,6 +63,18 @@ export class CanchaRepository {
     }
   }
 
+  // Obtener todas las canchas para administración (incluye inactivas)
+  async getAllForAdmin() {
+    try {
+      const querySnapshot = await getDocs(collection(db, this.collection));
+      const canchas = querySnapshot.docs.map(doc => Cancha.fromFirestore(doc));
+      return canchas.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    } catch (error) {
+      console.info('Error getting all canchas for admin:', error);
+      throw error;
+    }
+  }
+
   // Obtener canchas por tipo
   async getByType(type) {
     try {
