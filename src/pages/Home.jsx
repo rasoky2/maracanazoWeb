@@ -287,9 +287,8 @@ const Home = () => {
                 </motion.h1>
                 
                 <p className="text-lg md:text-xl mb-4 opacity-90">
-                  Maracanazo es el corazón palpitante del entretenimiento, deportes y comunidad. 
-                  Construido para inspirar y diseñado para el futuro, nuestro estadio de clase mundial 
-                  reúne momentos inolvidables.
+                  Encuentra y reserva las mejores canchas deportivas en tu zona.
+                  Sistema simple y eficiente para gestionar tus reservas deportivas.
                 </p>
                 
                 <motion.div className="flex gap-3" initial={{opacity: 0, y: 8}} animate={{opacity: 1, y: 0}} transition={{delay: 0.1}}>
@@ -310,7 +309,7 @@ const Home = () => {
                 transition={{duration: 0.35}}
                 className="flex flex-col relative overflow-hidden h-auto text-foreground bg-white/95 backdrop-blur-xl
                 shadow-2xl p-6 rounded-3xl border border-white/50 transition-all duration-300"
-                style={{boxSizing: 'border-box'}} 
+                style={{boxSizing: 'border-box', maxHeight: '600px'}} 
                 tabIndex={-1}
               >
                 {loadingCanchas ? (
@@ -370,77 +369,76 @@ const Home = () => {
                       </div>
                     </div>
 
-                    {loadingReservas && (
-                      <div className="flex items-center justify-center py-4">
-                        <Spinner size="sm" color="success" />
-                      </div>
-                    )}
-                    {!loadingReservas && scheduleBlocks.length > 0 && (
-                      scheduleBlocks.map(block => (
-                        <div 
-                          key={block.timeRange} 
-                          className={`flex items-center justify-between p-3 mb-2 rounded-xl transition-all ${
-                            block.available ? 'bg-gray-50' : 'bg-red-50 opacity-75'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <FaClock size={16} className={block.available ? 'text-gray-600' : 'text-red-500'} />
-                            <span className="font-semibold">{block.label}</span>
-                            <Chip 
-                              color={block.available ? 'success' : 'danger'} 
-                              size="sm"
-                            >
-                              {block.timeRange}
-                            </Chip>
-                            {!block.available && (
-                              <Chip color="danger" size="sm" variant="flat">Ocupado</Chip>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-success">S/ {block.price} <span className="text-sm text-gray-500">/ hora</span></span>
-                            {block.available ? (
-                              <Link to={`/reserva/${selectedCanchaId}`}>
-                                <Button color="success" size="sm" className="flex items-center gap-1 rounded-full px-4">
-                                  <FaCheckCircle size={16} />
-                                  Reservar
-                                </Button>
-                              </Link>
-                            ) : (
-                              <Button 
-                                color="default" 
-                                size="sm" 
-                                className="flex items-center gap-1 rounded-full px-4"
-                                isDisabled
-                              >
-                                No disponible
-                              </Button>
-                            )}
-                          </div>
+                    <div 
+                      className="max-h-[280px] overflow-y-auto pr-2"
+                      style={{
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: '#cbd5e1 #f1f5f9'
+                      }}
+                    >
+                      {loadingReservas && (
+                        <div className="flex items-center justify-center py-4">
+                          <Spinner size="sm" color="success" />
                         </div>
-                      ))
-                    )}
-                    {!loadingReservas && scheduleBlocks.length === 0 && (
-                      <div className="text-center py-4 text-gray-500">
-                        {selectedCanchaId ? 'No hay horarios disponibles' : 'Selecciona una cancha para ver horarios'}
-                      </div>
-                    )}
+                      )}
+                      {!loadingReservas && scheduleBlocks.length > 0 && (
+                        <div className="space-y-2">
+                          {scheduleBlocks.map(block => (
+                            <div 
+                              key={block.timeRange} 
+                              className={`flex items-center justify-between p-2 rounded-lg transition-all ${
+                                block.available ? 'bg-gray-50 hover:bg-gray-100' : 'bg-red-50 opacity-75'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <FaClock size={14} className={block.available ? 'text-gray-600 flex-shrink-0' : 'text-red-500 flex-shrink-0'} />
+                                <span className="font-medium text-sm whitespace-nowrap">{block.label}</span>
+                                <Chip 
+                                  color={block.available ? 'success' : 'danger'} 
+                                  size="sm"
+                                  className="text-xs"
+                                >
+                                  {block.timeRange}
+                                </Chip>
+                                {!block.available && (
+                                  <Chip color="danger" size="sm" variant="flat" className="text-xs">Ocupado</Chip>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="font-semibold text-success text-sm whitespace-nowrap">S/ {block.price}<span className="text-xs text-gray-500">/h</span></span>
+                                {block.available ? (
+                                  <Link to={`/reserva/${selectedCanchaId}`}>
+                                    <Button color="success" size="sm" className="flex items-center gap-1 rounded-full px-3 text-xs h-7 min-w-fit">
+                                      <FaCheckCircle size={12} />
+                                      <span className="hidden sm:inline">Reservar</span>
+                                    </Button>
+                                  </Link>
+                                ) : (
+                                  <Button 
+                                    color="default" 
+                                    size="sm" 
+                                    className="flex items-center gap-1 rounded-full px-3 text-xs h-7 min-w-fit"
+                                    isDisabled
+                                  >
+                                    No disponible
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {!loadingReservas && scheduleBlocks.length === 0 && (
+                        <div className="text-center py-4 text-gray-500 text-sm">
+                          {selectedCanchaId ? 'No hay horarios disponibles' : 'Selecciona una cancha para ver horarios'}
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </motion.div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* About Section */}
-      <section className="py-16 bg-white">
-        <div className="mx-auto max-w-5xl px-4 text-center">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">Bienvenido a Maracanazo</h2>
-              <p className="text-lg text-gray-600">
-                El corazón palpitante del entretenimiento, deportes y comunidad en Housebuilding, 
-                Uttara, Dhaka. Construido para inspirar y diseñado para el futuro, Maracanazo 
-                es un lugar de clase mundial que reúne momentos inolvidables.
-              </p>
         </div>
       </section>
 

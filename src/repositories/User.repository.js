@@ -7,7 +7,8 @@ import {
   updateDoc, 
   deleteDoc, 
   query, 
-  where} from 'firebase/firestore';
+  where
+} from 'firebase/firestore';
 import { db } from '../config/firebase.config.js';
 import { User } from '../models/User.model.js';
 
@@ -77,8 +78,27 @@ export class UserRepository {
   // Actualizar usuario
   async update(id, userData) {
     try {
+      // Obtener el documento actual para preservar campos que no se están actualizando
       const userRef = doc(db, this.collection, id);
-      const user = new User({ ...userData, id, fechaActualizacion: new Date() });
+      const currentDoc = await getDoc(userRef);
+      
+      if (!currentDoc.exists()) {
+        throw new Error('Usuario no encontrado');
+      }
+
+      const currentData = currentDoc.data();
+      
+      // Combinar datos actuales con los nuevos, preservando campos importantes
+      const updatedData = {
+        ...currentData,
+        ...userData,
+        id,
+        fechaActualizacion: new Date(),
+        // Asegurar que el email siempre esté presente
+        email: userData.email || currentData.email || ''
+      };
+
+      const user = new User(updatedData);
       await updateDoc(userRef, user.toFirestore());
       return user;
     } catch (error) {

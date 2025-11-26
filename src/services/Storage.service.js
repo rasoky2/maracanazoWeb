@@ -9,9 +9,10 @@ import { storage } from '../config/firebase.config.js';
 export class StorageService {
   basePath = 'canchas';
 
-  async uploadImage(file, path) {
+  async uploadImage(file, path, basePathOverride = null) {
     try {
-      const storageRef = ref(storage, `${this.basePath}/${path}`);
+      const base = basePathOverride || this.basePath;
+      const storageRef = ref(storage, `${base}/${path}`);
       await uploadBytes(storageRef, file);
       return await getDownloadURL(storageRef);
     } catch (error) {
@@ -20,9 +21,10 @@ export class StorageService {
     }
   }
 
-  async uploadImageFromBlob(blob, path) {
+  async uploadImageFromBlob(blob, path, basePathOverride = null) {
     try {
-      const storageRef = ref(storage, `${this.basePath}/${path}`);
+      const base = basePathOverride || this.basePath;
+      const storageRef = ref(storage, `${base}/${path}`);
       await uploadBytes(storageRef, blob);
       return await getDownloadURL(storageRef);
     } catch (error) {
@@ -47,5 +49,10 @@ export class StorageService {
   generateImagePath(canchaId, imageType, extension = 'jpg') {
     const timestamp = Date.now();
     return `${canchaId}/${imageType}_${timestamp}.${extension}`;
+  }
+
+  generateUserImagePath(userId, extension = 'jpg') {
+    const timestamp = Date.now();
+    return `${userId}/profile_${timestamp}.${extension}`;
   }
 }

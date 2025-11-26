@@ -18,6 +18,13 @@ export const AuthProvider = ({ children }) => {
   const authServiceRef = React.useRef(new AuthService());
 
   useEffect(() => {
+    // Cargar usuario desde cache inmediatamente si existe (para respuesta instantánea)
+    const cachedUser = authServiceRef.current.getUserFromCache();
+    if (cachedUser) {
+      setUser(cachedUser);
+      // No cambiar loading aquí, esperar confirmación de Firebase Auth
+    }
+
     // Escuchar cambios en el estado de autenticación
     const unsubscribe = authServiceRef.current.onAuthStateChange(async firebaseUser => {
       if (firebaseUser) {
@@ -26,16 +33,19 @@ export const AuthProvider = ({ children }) => {
           const userData = firebaseUser;
           
           // Normalizar el usuario - asegurar que urlFoto y otros campos estén disponibles
-          setUser({
+          const normalizedUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: firebaseUser.displayName,
             ...userData,
+            id: userData.id || '', // Asegurar que el ID de Firestore esté presente
             urlFoto: userData.urlFoto || firebaseUser.photoURL || '',
             nombreCompleto: userData.nombreCompleto || firebaseUser.displayName || '',
             telefono: userData.telefono || '',
             esAdmin: userData.esAdmin === true
-          });
+          };
+          
+          setUser(normalizedUser);
         } catch (error) {
           console.info('Error obteniendo datos del usuario:', error.message);
           setUser({
@@ -46,6 +56,8 @@ export const AuthProvider = ({ children }) => {
           });
         }
       } else {
+        // Si Firebase Auth dice que no hay usuario, limpiar cache y estado
+        authServiceRef.current.clearCache();
         setUser(null);
       }
       setLoading(false);
@@ -91,6 +103,30 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const refreshUser = async () => {
+    try {
+      const updatedUser = await authServiceRef.current.refreshUser();
+      if (updatedUser) {
+        const normalizedUser = {
+          uid: updatedUser.uid,
+          email: updatedUser.email,
+          displayName: updatedUser.displayName,
+          ...updatedUser,
+          urlFoto: updatedUser.urlFoto || updatedUser.photoURL || '',
+          nombreCompleto: updatedUser.nombreCompleto || updatedUser.displayName || '',
+          telefono: updatedUser.telefono || '',
+          esAdmin: updatedUser.esAdmin === true
+        };
+        setUser(normalizedUser);
+        return normalizedUser;
+      }
+      return null;
+    } catch (error) {
+      console.info('Error refreshing user:', error.message);
+      return null;
+    }
+  };
+
   const value = useMemo(() => ({
     user,
     loading,
@@ -98,6 +134,7 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     loginWithGoogle,
+    refreshUser,
     isAuthenticated: !!user
   }), [user, loading]);
 

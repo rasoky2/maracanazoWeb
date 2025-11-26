@@ -16,6 +16,9 @@ export class AuthService {
     this.currentUser = null;
     this.lastFetchedEmail = null;
     this.googleProvider = new GoogleAuthProvider();
+    this.CACHE_KEY = 'marakanazo_user_cache';
+    this.CACHE_TIMESTAMP_KEY = 'marakanazo_user_cache_timestamp';
+    this.CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
     
     // Configurar scopes adicionales para obtener más información
     this.googleProvider.addScope('profile');
@@ -23,6 +26,46 @@ export class AuthService {
     this.googleProvider.addScope('https://www.googleapis.com/auth/user.birthday.read');
     this.googleProvider.addScope('https://www.googleapis.com/auth/user.gender.read');
     this.googleProvider.addScope('https://www.googleapis.com/auth/user.phonenumbers.read');
+  }
+
+  // Guardar usuario en cache
+  saveUserToCache(userData) {
+    try {
+      if (userData && userData.email) {
+        localStorage.setItem(this.CACHE_KEY, JSON.stringify(userData));
+        localStorage.setItem(this.CACHE_TIMESTAMP_KEY, Date.now().toString());
+      }
+    } catch (error) {
+      console.info('Error guardando cache:', error.message);
+    }
+  }
+
+  // Obtener usuario del cache
+  getUserFromCache() {
+    try {
+      const cachedData = localStorage.getItem(this.CACHE_KEY);
+      const timestamp = localStorage.getItem(this.CACHE_TIMESTAMP_KEY);
+      
+      if (cachedData && timestamp) {
+        const cacheAge = Date.now() - parseInt(timestamp, 10);
+        if (cacheAge < this.CACHE_DURATION) {
+          return JSON.parse(cachedData);
+        }
+      }
+    } catch (error) {
+      console.info('Error leyendo cache:', error.message);
+    }
+    return null;
+  }
+
+  // Limpiar cache
+  clearCache() {
+    try {
+      localStorage.removeItem(this.CACHE_KEY);
+      localStorage.removeItem(this.CACHE_TIMESTAMP_KEY);
+    } catch (error) {
+      console.info('Error limpiando cache:', error.message);
+    }
   }
 
   // Registrar nuevo usuario
@@ -69,15 +112,20 @@ export class AuthService {
       // Obtener datos adicionales del usuario desde Firestore
       const userDoc = await this.userRepository.getByEmail(email);
       
+      const userData = {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        emailVerified: user.emailVerified,
+        ...userDoc
+      };
+      
+      // Guardar en cache inmediatamente
+      this.saveUserToCache(userData);
+      
       return { 
         success: true, 
-        user: {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          emailVerified: user.emailVerified,
-          ...userDoc
-        }
+        user: userData
       };
     } catch (error) {
       console.info('Error logging in:', error.message);
@@ -160,12 +208,17 @@ export class AuthService {
         });
       }
       
+      const userData = {
+        ...completeUserInfo,
+        ...userDoc
+      };
+      
+      // Guardar en cache inmediatamente
+      this.saveUserToCache(userData);
+      
       return { 
         success: true, 
-        user: {
-          ...completeUserInfo,
-          ...userDoc
-        }
+        user: userData
       };
     } catch (error) {
       console.info('Error logging in with Google:', error.message);
@@ -204,6 +257,8 @@ export class AuthService {
     try {
       await signOut(auth);
       this.currentUser = null;
+      this.lastFetchedEmail = null;
+      this.clearCache();
     } catch (error) {
       console.info('Error logging out:', error.message);
       throw error;
@@ -215,10 +270,57 @@ export class AuthService {
     return this.currentUser;
   }
 
+  // Refrescar datos del usuario desde Firestore y actualizar cache
+  async refreshUser() {
+    try {
+      const currentAuthUser = auth.currentUser;
+      if (!currentAuthUser || !currentAuthUser.email) {
+        return null;
+      }
+
+      const userDoc = await this.userRepository.getByEmail(currentAuthUser.email);
+      if (!userDoc || !userDoc.id) {
+        return null;
+      }
+
+      // Combinar datos de Firebase Auth con datos de Firestore
+      const updatedUser = {
+        ...currentAuthUser,
+        ...userDoc,
+        id: userDoc.id, // Asegurar que el ID de Firestore esté presente
+        uid: currentAuthUser.uid,
+        urlFoto: userDoc?.urlFoto || currentAuthUser.photoURL || '',
+        nombreCompleto: userDoc?.nombreCompleto || currentAuthUser.displayName || '',
+        telefono: userDoc?.telefono || '',
+        esAdmin: userDoc?.esAdmin === true
+      };
+
+      this.currentUser = updatedUser;
+      this.lastFetchedEmail = currentAuthUser.email;
+      this.saveUserToCache(updatedUser);
+
+      return updatedUser;
+    } catch (error) {
+      console.info('Error refrescando usuario:', error.message);
+      return null;
+    }
+  }
+
   // Escuchar cambios en el estado de autenticación
   onAuthStateChange(callback) {
     return onAuthStateChanged(auth, async user => {
       if (user) {
+        // Cargar desde cache primero para respuesta inmediata
+        const cachedUser = this.getUserFromCache();
+        if (cachedUser && cachedUser.email === user.email) {
+          this.currentUser = {
+            ...user,
+            ...cachedUser
+          };
+          // Llamar callback inmediatamente con datos del cache
+          callback(this.currentUser);
+        }
+
         // Solo obtener datos si el email cambió para evitar consultas innecesarias
         if (user.email !== this.lastFetchedEmail) {
           this.lastFetchedEmail = user.email;
@@ -229,11 +331,20 @@ export class AuthService {
             this.currentUser = { 
               ...user, 
               ...userDoc,
+              id: userDoc?.id || '', // Asegurar que el ID de Firestore esté presente
               urlFoto: userDoc?.urlFoto || user.photoURL || '',
               nombreCompleto: userDoc?.nombreCompleto || user.displayName || '',
               telefono: userDoc?.telefono || '',
               esAdmin: userDoc?.esAdmin === true
             };
+            
+            // Guardar en cache para próximas cargas
+            this.saveUserToCache(this.currentUser);
+            
+            // Si no había cache, llamar callback ahora
+            if (!cachedUser || cachedUser.email !== user.email) {
+              callback(this.currentUser);
+            }
           } catch (error) {
             console.info('Error obteniendo datos del usuario:', error.message);
             this.currentUser = { 
@@ -241,13 +352,24 @@ export class AuthService {
               urlFoto: user.photoURL || '',
               nombreCompleto: user.displayName || ''
             };
+            
+            // Guardar datos básicos en cache
+            this.saveUserToCache(this.currentUser);
+            
+            if (!cachedUser || cachedUser.email !== user.email) {
+              callback(this.currentUser);
+            }
           }
+        } else if (!cachedUser) {
+          // Si no hay cache y el email no cambió, usar usuario actual
+          callback(this.currentUser);
         }
       } else {
         this.currentUser = null;
         this.lastFetchedEmail = null;
+        this.clearCache();
+        callback(null);
       }
-      callback(this.currentUser);
     });
   }
 

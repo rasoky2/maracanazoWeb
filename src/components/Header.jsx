@@ -11,7 +11,6 @@ import {
 } from '@heroui/react';
 import { 
   FaCalendarAlt,
-  FaPhone,
   FaUser,
   FaCog,
   FaSignOutAlt
@@ -70,9 +69,6 @@ const Header = () => {
           <Link to="/canchas" className="text-sm hover:text-gray-200 flex items-center gap-1 whitespace-nowrap">
             <FaCalendarAlt size={16} />Canchas
           </Link>
-          <Link to="/contact" className="text-sm hover:text-gray-200 flex items-center gap-1 whitespace-nowrap">
-            <FaPhone size={16} />Contacto
-          </Link>
           {isAdmin && (
             <Link 
               to="/admin" 
@@ -89,6 +85,7 @@ const Header = () => {
                 <Button variant="light" className="bg-transparent text-white min-w-0">
                   <div className="flex items-center gap-2">
                     <Avatar
+                      key={user?.urlFoto || user?.id || 'avatar'}
                       className="w-8 h-8 text-xs font-bold flex-shrink-0"
                       name={getInitials(getUserDisplayName())}
                       src={getUserPhoto() || undefined}
@@ -99,7 +96,7 @@ const Header = () => {
               </DropdownTrigger>
               <DropdownMenu aria-label="user menu">
                 <DropdownItem key="profile" href="/profile" startContent={<FaUser size={14} />}>Mi Perfil</DropdownItem>
-                <DropdownItem key="reservations" href="/reservations" startContent={<FaCalendarAlt size={14} />}>Mis Reservas</DropdownItem>
+                <DropdownItem key="reservations" href="/profile" startContent={<FaCalendarAlt size={14} />}>Mis Reservas</DropdownItem>
                 {isAdmin && (
                   <DropdownItem key="admin" href="/admin" startContent={<FaCog size={14} />}>Panel Admin</DropdownItem>
                 )}

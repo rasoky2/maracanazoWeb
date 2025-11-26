@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Card, Button, Chip, Spinner } from '@heroui/react';
 import { 
   FaUsers, 
-  FaCalendarAlt, 
   FaPlus, 
   FaEdit, 
   FaTrash, 
@@ -216,7 +215,7 @@ const Admin = () => {
           <h1 className="text-3xl md:text-4xl font-bold flex items-center justify-center gap-3">
             <FaCog /> Panel de Administración
           </h1>
-          <p className="text-lg text-gray-600">Gestiona usuarios, canchas, horarios y eventos</p>
+          <p className="text-lg text-gray-600">Gestiona usuarios, canchas y reservas</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -228,7 +227,6 @@ const Admin = () => {
                   { key: 'users', icon: <FaUsers size={16} />, label: 'Usuarios' },
                   { key: 'canchas', icon: <FaFutbol size={16} />, label: 'Canchas' },
                   { key: 'reservas', icon: <FaCalendarCheck size={16} />, label: 'Reservas' },
-                  { key: 'eventos', icon: <FaCalendarAlt size={16} />, label: 'Eventos' },
                   { key: 'home', icon: <FaHome size={16} />, label: 'Contenido Home' },
                 ].map(item => (
                   <button
@@ -289,14 +287,16 @@ const Admin = () => {
                           <tbody>
                             {users.slice(0, 5).map(userItem => (
                               <tr key={userItem.id} className="border-t">
-                                <td className="py-2 pr-4">{userItem.name}</td>
+                                <td className="py-2 pr-4">{userItem.nombreCompleto || 'Sin nombre'}</td>
                                 <td className="py-2 pr-4">{userItem.email}</td>
                                 <td className="py-2 pr-4">
-                                  <Chip color={userItem.isAdmin ? 'danger' : 'primary'} size="sm">
-                                    {userItem.isAdmin ? 'Admin' : 'Usuario'}
+                                  <Chip color={userItem.esAdmin ? 'danger' : 'primary'} size="sm">
+                                    {userItem.esAdmin ? 'Admin' : 'Usuario'}
                                   </Chip>
                                 </td>
-                                <td className="py-2 pr-4">{formatDate(userItem.createdAt)}</td>
+                                <td className="py-2 pr-4">
+                                  {userItem.fechaCreacion ? formatDate(userItem.fechaCreacion.toDate ? userItem.fechaCreacion.toDate() : userItem.fechaCreacion) : 'N/A'}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -342,7 +342,7 @@ const Admin = () => {
               <Card>
                 <div className="flex items-center justify-between border-b px-4 py-3">
                   <h4 className="m-0">Gestión de Usuarios</h4>
-                  <Button color="primary" size="sm">
+                  <Button color="white" className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50" size="sm">
                     <FaPlus className="mr-1" />
                     Nuevo Usuario
                   </Button>
@@ -365,23 +365,25 @@ const Admin = () => {
                         {users.map(userItem => (
                           <tr key={userItem.id} className="border-t">
                             <td className="py-2 pr-4">#{userItem.id.slice(0, 8)}</td>
-                            <td className="py-2 pr-4">{userItem.name}</td>
+                            <td className="py-2 pr-4">{userItem.nombreCompleto || 'Sin nombre'}</td>
                             <td className="py-2 pr-4">{userItem.email}</td>
-                            <td className="py-2 pr-4">{userItem.phone || 'N/A'}</td>
+                            <td className="py-2 pr-4">{userItem.telefono || 'N/A'}</td>
                             <td className="py-2 pr-4">
-                              <Chip color={userItem.isAdmin ? 'danger' : 'primary'} size="sm">
-                                {userItem.isAdmin ? 'Admin' : 'Usuario'}
+                              <Chip color={userItem.esAdmin ? 'danger' : 'primary'} size="sm">
+                                {userItem.esAdmin ? 'Admin' : 'Usuario'}
                               </Chip>
                             </td>
-                            <td className="py-2 pr-4">{formatDate(userItem.createdAt)}</td>
+                            <td className="py-2 pr-4">
+                              {userItem.fechaCreacion ? formatDate(userItem.fechaCreacion.toDate ? userItem.fechaCreacion.toDate() : userItem.fechaCreacion) : 'N/A'}
+                            </td>
                             <td className="py-2 pr-4">
                               <div className="flex gap-2">
                                 <Button 
                                   size="sm" 
-                                  color={userItem.isAdmin ? 'warning' : 'success'}
-                                  onPress={() => handleUserAction(userItem.id, userItem.isAdmin)}
+                                  color={userItem.esAdmin ? 'warning' : 'success'}
+                                  onPress={() => handleUserAction(userItem.id, userItem.esAdmin)}
                                 >
-                                  {userItem.isAdmin ? 'Degradar' : 'Promover'}
+                                  {userItem.esAdmin ? 'Degradar' : 'Promover'}
                                 </Button>
                                 <Button 
                                   size="sm" 
@@ -406,7 +408,7 @@ const Admin = () => {
               <Card>
                 <div className="flex items-center justify-between border-b px-4 py-3">
                   <h4 className="m-0">Gestión de Canchas</h4>
-                  <Button color="primary" size="sm" onPress={handleCreateCancha}>
+                  <Button color="white" className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50" size="sm" onPress={handleCreateCancha}>
                     <FaPlus className="mr-1" />
                     Nueva Cancha
                   </Button>
@@ -415,6 +417,13 @@ const Admin = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {canchas.map(cancha => (
                       <Card key={cancha.id} className="h-full p-4">
+                        {(cancha.imagenPrincipal || cancha.imagen) && (
+                          <img 
+                            src={cancha.imagenPrincipal || cancha.imagen} 
+                            alt={cancha.nombre || 'Cancha'}
+                            className="w-full h-48 object-cover rounded-lg mb-3"
+                          />
+                        )}
                         <div className="flex items-start justify-between mb-2">
                           <h5 className="m-0">{cancha.nombre || 'Sin nombre'}</h5>
                           <Chip color={cancha.activo ? 'success' : 'default'} size="sm">
@@ -523,31 +532,6 @@ const Admin = () => {
                       ))}
                     </tbody>
                   </table>
-                </div>
-              </Card>
-            )}
-
-            {activeTab === 'eventos' && (
-              <Card>
-                <div className="flex items-center justify-between border-b px-4 py-3">
-                  <h4 className="m-0">Gestión de Eventos</h4>
-                  <Button color="primary" size="sm">
-                    <FaPlus className="mr-1" />
-                    Nuevo Evento
-                  </Button>
-                </div>
-                <div className="p-4">
-                  <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                    <div className="flex items-center gap-2">
-                      <FaCalendarAlt />
-                      <span>Aquí puedes crear y gestionar eventos especiales en las canchas.</span>
-                    </div>
-                  </div>
-                  <div className="text-center py-10">
-                    <FaCalendarAlt size={64} className="text-gray-400 mb-3 mx-auto" />
-                    <h5 className="text-lg font-semibold">Gestión de Eventos</h5>
-                    <p className="text-gray-500">Próximamente podrás crear eventos especiales y torneos.</p>
-                  </div>
                 </div>
               </Card>
             )}

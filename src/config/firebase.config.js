@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
 
@@ -22,6 +22,15 @@ const app = initializeApp(firebaseConfig);
 // Inicializar servicios de Firebase
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+// Configurar persistencia de autenticación (localStorage/indexedDB)
+// Esto asegura que la sesión persista entre recargas de página
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence).catch(error => {
+    console.info('Error configurando persistencia:', error.message);
+  });
+}
+
 export const storage = getStorage(app);
 
 // Inicializar Analytics solo en el navegador
