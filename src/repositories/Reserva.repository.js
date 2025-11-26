@@ -52,11 +52,16 @@ export class ReservaRepository {
     try {
       const q = query(
         collection(db, this.collection),
-        where('idUsuario', '==', userId),
-        orderBy('fechaCreacion', 'desc')
+        where('idUsuario', '==', userId)
       );
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => Reserva.fromFirestore(doc));
+      const reservas = querySnapshot.docs.map(doc => Reserva.fromFirestore(doc));
+      // Ordenar en memoria por fechaCreacion descendente
+      return reservas.sort((a, b) => {
+        const fechaA = a.fechaCreacion?.toDate ? a.fechaCreacion.toDate() : new Date(a.fechaCreacion);
+        const fechaB = b.fechaCreacion?.toDate ? b.fechaCreacion.toDate() : new Date(b.fechaCreacion);
+        return fechaB - fechaA;
+      });
     } catch (error) {
       console.info('Error getting reservas by user:', error);
       throw error;
@@ -70,7 +75,7 @@ export class ReservaRepository {
         collection(db, this.collection),
         where('idCancha', '==', canchaId),
         where('fecha', '==', date),
-        where('estado', 'in', ['pendiente', 'confirmada']),
+        where('estadoPago', 'in', ['pendiente', 'pagado']),
         orderBy('horaInicio')
       );
       const querySnapshot = await getDocs(q);
@@ -114,7 +119,7 @@ export class ReservaRepository {
     try {
       const reservaRef = doc(db, this.collection, id);
       await updateDoc(reservaRef, { 
-        estado: 'cancelada', 
+        estadoPago: 'cancelado', 
         fechaActualizacion: new Date() 
       });
       return true;
@@ -129,7 +134,7 @@ export class ReservaRepository {
     try {
       const reservaRef = doc(db, this.collection, id);
       await updateDoc(reservaRef, { 
-        estado: 'confirmada', 
+        estadoPago: 'pagado', 
         fechaActualizacion: new Date() 
       });
       return true;

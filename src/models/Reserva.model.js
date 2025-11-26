@@ -12,7 +12,6 @@ export class Reserva {
     this.idDescuento = data.idDescuento || null;
     this.codigoDescuento = data.codigoDescuento || null;
     this.montoDescuento = data.montoDescuento || 0;
-    this.estado = data.estado || 'pendiente';
     this.estadoPago = data.estadoPago || 'pendiente';
     this.metodoPago = data.metodoPago || '';
     this.notas = data.notas || '';
@@ -32,7 +31,6 @@ export class Reserva {
       idDescuento: this.idDescuento,
       codigoDescuento: this.codigoDescuento,
       montoDescuento: this.montoDescuento,
-      estado: this.estado,
       estadoPago: this.estadoPago,
       metodoPago: this.metodoPago,
       notas: this.notas,

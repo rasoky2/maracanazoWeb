@@ -3,7 +3,6 @@ import { Card, Button, Chip, Spinner } from '@heroui/react';
 import { 
   FaUsers, 
   FaCalendarAlt, 
-  FaClock, 
   FaPlus, 
   FaEdit, 
   FaTrash, 
@@ -51,6 +50,17 @@ const Admin = () => {
     loadData();
   }, []);
 
+  const calculateDuration = (horaInicio, horaFin) => {
+    const [startHours, startMinutes] = horaInicio.split(':').map(Number);
+    const [endHours, endMinutes] = horaFin.split(':').map(Number);
+    const startTotal = startHours * 60 + startMinutes;
+    let endTotal = endHours * 60 + endMinutes;
+    if (endTotal < startTotal) {
+      endTotal += 24 * 60;
+    }
+    return Math.round((endTotal - startTotal) / 60);
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -62,14 +72,34 @@ const Admin = () => {
 
       setUsers(usersData);
       setCanchas(canchasData);
-      setReservas(reservasData);
+
+      // Enriquecer reservas con datos de usuario y cancha
+      const reservasEnriquecidas = reservasData.map(reserva => {
+        const usuario = usersData.find(u => u.id === reserva.idUsuario);
+        const cancha = canchasData.find(c => c.id === reserva.idCancha);
+        const duracion = calculateDuration(reserva.horaInicio, reserva.horaFin);
+
+        return {
+          ...reserva,
+          userName: usuario?.nombreCompleto || usuario?.nombre || usuario?.name || 'Usuario no encontrado',
+          userEmail: usuario?.email || 'N/A',
+          userPhoto: usuario?.urlFoto || usuario?.photoURL || '',
+          canchaName: cancha?.nombre || cancha?.name || 'Cancha no encontrada',
+          date: reserva.fecha,
+          startTime: reserva.horaInicio,
+          duration: duracion,
+          total: reserva.precioTotal || reserva.subtotal || 0
+        };
+      });
+
+      setReservas(reservasEnriquecidas);
 
       // Calcular estadísticas
-      const totalRevenue = reservasData.reduce((sum, r) => sum + (r.total || 0), 0);
+      const totalRevenue = reservasEnriquecidas.reduce((sum, r) => sum + (r.total || 0), 0);
       setStats({
         totalUsers: usersData.length,
         totalCanchas: canchasData.length,
-        totalReservas: reservasData.length,
+        totalReservas: reservasEnriquecidas.length,
         totalRevenue
       });
     } catch (error) {
@@ -154,16 +184,6 @@ const Admin = () => {
     setSelectedCancha(null);
   };
 
-  const getStatusBadgeColor = status => {
-    if (status === 'confirmed') {
-      return 'success';
-    }
-    if (status === 'pending') {
-      return 'warning';
-    }
-    return 'danger';
-  };
-
   const formatDate = dateString => {
     if (!dateString) {
       return 'N/A';
@@ -208,7 +228,6 @@ const Admin = () => {
                   { key: 'users', icon: <FaUsers size={16} />, label: 'Usuarios' },
                   { key: 'canchas', icon: <FaFutbol size={16} />, label: 'Canchas' },
                   { key: 'reservas', icon: <FaCalendarCheck size={16} />, label: 'Reservas' },
-                  { key: 'horarios', icon: <FaClock size={16} />, label: 'Horarios' },
                   { key: 'eventos', icon: <FaCalendarAlt size={16} />, label: 'Eventos' },
                   { key: 'home', icon: <FaHome size={16} />, label: 'Contenido Home' },
                 ].map(item => (
@@ -459,7 +478,6 @@ const Admin = () => {
                         <th className="py-2 pr-4">Hora</th>
                         <th className="py-2 pr-4">Duración</th>
                         <th className="py-2 pr-4">Total</th>
-                        <th className="py-2 pr-4">Estado</th>
                         <th className="py-2 pr-4">Acciones</th>
                       </tr>
                     </thead>
@@ -468,9 +486,22 @@ const Admin = () => {
                         <tr key={reserva.id} className="border-t">
                           <td className="py-2 pr-4">#{reserva.id.slice(0, 8)}</td>
                           <td className="py-2 pr-4">
-                            <div>
-                              <div>{reserva.userName}</div>
-                              <small className="text-gray-500">{reserva.userEmail}</small>
+                            <div className="flex items-center gap-3">
+                              {reserva.userPhoto ? (
+                                <img 
+                                  src={reserva.userPhoto} 
+                                  alt={reserva.userName}
+                                  className="w-10 h-10 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-semibold text-sm">
+                                  {reserva.userName.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div>
+                                <div className="font-medium">{reserva.userName}</div>
+                                <small className="text-gray-500">{reserva.userEmail}</small>
+                              </div>
                             </div>
                           </td>
                           <td className="py-2 pr-4">{reserva.canchaName}</td>
@@ -478,11 +509,6 @@ const Admin = () => {
                           <td className="py-2 pr-4">{reserva.startTime}</td>
                           <td className="py-2 pr-4">{reserva.duration}h</td>
                           <td className="py-2 pr-4">{formatCurrency(reserva.total)}</td>
-                          <td className="py-2 pr-4">
-                            <Chip color={getStatusBadgeColor(reserva.status)} size="sm">
-                              {reserva.status}
-                            </Chip>
-                          </td>
                           <td className="py-2 pr-4">
                             <div className="flex gap-2">
                               <Button size="sm" variant="bordered" color="primary">
@@ -497,31 +523,6 @@ const Admin = () => {
                       ))}
                     </tbody>
                   </table>
-                </div>
-              </Card>
-            )}
-
-            {activeTab === 'horarios' && (
-              <Card>
-                <div className="flex items-center justify-between border-b px-4 py-3">
-                  <h4 className="m-0">Gestión de Horarios</h4>
-                  <Button color="primary" size="sm">
-                    <FaPlus className="mr-1" />
-                    Nuevo Horario
-                  </Button>
-                </div>
-                <div className="p-4">
-                  <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                    <div className="flex items-center gap-2">
-                      <FaClock />
-                      <span>Aquí puedes gestionar los horarios disponibles para cada cancha.</span>
-                    </div>
-                  </div>
-                  <div className="text-center py-10">
-                    <FaClock size={64} className="text-gray-400 mb-3 mx-auto" />
-                    <h5 className="text-lg font-semibold">Gestión de Horarios</h5>
-                    <p className="text-gray-500">Próximamente podrás gestionar horarios específicos para cada cancha.</p>
-                  </div>
                 </div>
               </Card>
             )}

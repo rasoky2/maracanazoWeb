@@ -337,7 +337,6 @@ const Reserva = () => {
         horaInicio: selectedSlot.time,
         horaFin: calculateEndTime(selectedSlot.time, parseInt(reservationData.duration)),
         precioTotal: calculateTotal(),
-        estado: 'pendiente',
         estadoPago: 'pendiente',
         notas: reservationData.notes,
         descuentoAplicado: descuentoData,

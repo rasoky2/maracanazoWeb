@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "deployweb": "npm run build && firebase deploy --only hosting"
   },
   "type": "module",
   "dependencies": {
