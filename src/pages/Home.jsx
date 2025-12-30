@@ -254,9 +254,10 @@ const Home = () => {
       <section 
         className="min-h-[80vh] flex items-center relative overflow-hidden"
         style={{
-          backgroundImage: 'url(https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=1920&auto=format&fit=crop)',
+          backgroundImage: 'url(https://wallpapercave.com/wp/wp8255680.jpg)',
           backgroundSize: 'cover',
-          backgroundPosition: 'center'
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
         }}
       >
         <div className="absolute inset-0 bg-black/40" />
@@ -277,13 +278,24 @@ const Home = () => {
                   </div>
                 </div>
                 
-                <motion.h1
+                <motion.h1 
                   initial={{opacity: 0, y: 16}}
                   animate={{opacity: 1, y: 0}}
                   transition={{duration: 0.4, ease: 'easeOut'}}
-                  className="text-4xl md:text-6xl font-bold mb-4"
+                  className="text-4xl md:text-6xl font-bold mb-4 leading-tight"
                 >
-                  Reserva tu Canchita En Solo Un Minuto
+                  Reserva tu{' '}
+                  <span className="relative inline-block group">
+                    <span className="italic text-emerald-400 transition-all duration-300 group-hover:text-emerald-300 group-hover:drop-shadow-[0_0_12px_rgba(52,211,153,0.6)]">
+                      Canchita
+                    </span>
+                    <span className="absolute -bottom-1 left-0 w-0 h-1 bg-emerald-400 rounded-full transition-all duration-500 group-hover:w-full" />
+                  </span>
+                  <br className="hidden md:block" />
+                  En Solo{' '}
+                  <span className="italic text-white">
+                    Un Minuto
+                  </span>
                 </motion.h1>
                 
                 <p className="text-lg md:text-xl mb-4 opacity-90">
@@ -376,63 +388,63 @@ const Home = () => {
                         scrollbarColor: '#cbd5e1 #f1f5f9'
                       }}
                     >
-                      {loadingReservas && (
-                        <div className="flex items-center justify-center py-4">
-                          <Spinner size="sm" color="success" />
-                        </div>
-                      )}
-                      {!loadingReservas && scheduleBlocks.length > 0 && (
+                    {loadingReservas && (
+                      <div className="flex items-center justify-center py-4">
+                        <Spinner size="sm" color="success" />
+                      </div>
+                    )}
+                    {!loadingReservas && scheduleBlocks.length > 0 && (
                         <div className="space-y-2">
                           {scheduleBlocks.map(block => (
-                            <div 
-                              key={block.timeRange} 
+                        <div 
+                          key={block.timeRange} 
                               className={`flex items-center justify-between p-2 rounded-lg transition-all ${
                                 block.available ? 'bg-gray-50 hover:bg-gray-100' : 'bg-red-50 opacity-75'
-                              }`}
-                            >
+                          }`}
+                        >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <FaClock size={14} className={block.available ? 'text-gray-600 flex-shrink-0' : 'text-red-500 flex-shrink-0'} />
                                 <span className="font-medium text-sm whitespace-nowrap">{block.label}</span>
-                                <Chip 
-                                  color={block.available ? 'success' : 'danger'} 
-                                  size="sm"
+                            <Chip 
+                              color={block.available ? 'success' : 'danger'} 
+                              size="sm"
                                   className="text-xs"
-                                >
-                                  {block.timeRange}
-                                </Chip>
-                                {!block.available && (
+                            >
+                              {block.timeRange}
+                            </Chip>
+                            {!block.available && (
                                   <Chip color="danger" size="sm" variant="flat" className="text-xs">Ocupado</Chip>
-                                )}
-                              </div>
+                            )}
+                          </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
                                 <span className="font-semibold text-success text-sm whitespace-nowrap">S/ {block.price}<span className="text-xs text-gray-500">/h</span></span>
-                                {block.available ? (
-                                  <Link to={`/reserva/${selectedCanchaId}`}>
+                            {block.available ? (
+                              <Link to={`/reserva/${selectedCanchaId}`}>
                                     <Button color="success" size="sm" className="flex items-center gap-1 rounded-full px-3 text-xs h-7 min-w-fit">
                                       <FaCheckCircle size={12} />
                                       <span className="hidden sm:inline">Reservar</span>
-                                    </Button>
-                                  </Link>
-                                ) : (
-                                  <Button 
-                                    color="default" 
-                                    size="sm" 
+                                </Button>
+                              </Link>
+                            ) : (
+                              <Button 
+                                color="default" 
+                                size="sm" 
                                     className="flex items-center gap-1 rounded-full px-3 text-xs h-7 min-w-fit"
-                                    isDisabled
-                                  >
-                                    No disponible
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
+                                isDisabled
+                              >
+                                No disponible
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                           ))}
                         </div>
-                      )}
-                      {!loadingReservas && scheduleBlocks.length === 0 && (
+                    )}
+                    {!loadingReservas && scheduleBlocks.length === 0 && (
                         <div className="text-center py-4 text-gray-500 text-sm">
-                          {selectedCanchaId ? 'No hay horarios disponibles' : 'Selecciona una cancha para ver horarios'}
-                        </div>
-                      )}
+                        {selectedCanchaId ? 'No hay horarios disponibles' : 'Selecciona una cancha para ver horarios'}
+                      </div>
+                    )}
                     </div>
                   </>
                 )}

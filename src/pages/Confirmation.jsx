@@ -38,24 +38,51 @@ const Confirmation = () => {
                 </div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-gray-500">Fecha:</span>
-                  <span className="font-semibold">{new Date(reservation.date).toLocaleDateString('es-PE')}</span>
+                  <span className="font-semibold">
+                    {reservation.fecha 
+                      ? (reservation.fecha.toDate ? reservation.fecha.toDate().toLocaleDateString('es-PE') : new Date(reservation.fecha).toLocaleDateString('es-PE'))
+                      : (reservation.date ? new Date(reservation.date).toLocaleDateString('es-PE') : 'N/A')
+                    }
+                  </span>
                 </div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-gray-500">Hora:</span>
-                  <span className="font-semibold">{reservation.time}</span>
+                  <span className="text-gray-500">Hora de Inicio:</span>
+                  <span className="font-semibold">
+                    {reservation.horaInicio || reservation.time || 'N/A'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-gray-500">Hora de Fin:</span>
+                  <span className="font-semibold">
+                    {reservation.horaFin || 'N/A'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-gray-500">Duración:</span>
-                  <span className="font-semibold">{reservation.duration} horas</span>
+                  <span className="font-semibold">
+                    {reservation.duration || (reservation.horaInicio && reservation.horaFin 
+                      ? (() => {
+                          const [startHours, startMinutes] = (reservation.horaInicio || reservation.time || '00:00').split(':').map(Number);
+                          const [endHours, endMinutes] = (reservation.horaFin || '00:00').split(':').map(Number);
+                          const startTotal = startHours * 60 + startMinutes;
+                          let endTotal = endHours * 60 + endMinutes;
+                          if (endTotal < startTotal) endTotal += 24 * 60;
+                          return Math.round((endTotal - startTotal) / 60);
+                        })()
+                      : 'N/A'
+                    )} horas
+                  </span>
                 </div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-gray-500">Jugadores:</span>
-                  <span className="font-semibold">{reservation.players}</span>
-                </div>
+                {reservation.notas && (
+                  <div className="flex items-start justify-between mb-2">
+                    <span className="text-gray-500">Notas:</span>
+                    <span className="font-semibold text-right">{reservation.notas}</span>
+                  </div>
+                )}
                 <hr />
                 <div className="flex items-center justify-between font-semibold text-2xl text-success">
                   <span>Total Pagado:</span>
-                  <span>S/ {reservation.total}</span>
+                  <span>S/ {reservation.precioTotal || reservation.total || 0}</span>
                 </div>
                 {reservation.payment && (
                   <div className="flex items-center justify-between mt-2">

@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Card, Button, Input, Textarea } from '@heroui/react';
+import { Card, Button, Input, Textarea, Spinner } from '@heroui/react';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { ReservaRepository } from '../repositories/Reserva.repository.js';
 
-const Payment = ({ user }) => {
+const Payment = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+  const reservaRepository = new ReservaRepository();
   const [reservation, setReservation] = useState(null);
   const [paymentData, setPaymentData] = useState({
     cardNumber: '',
@@ -18,22 +22,30 @@ const Payment = ({ user }) => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
+    // Esperar a que termine la carga de autenticación antes de verificar
+    if (authLoading) {
       return;
     }
 
+    // Si no hay usuario después de cargar, redirigir al login
+    if (!user) {
+      navigate('/login', { state: { from: location.pathname } });
+      return;
+    }
+
+    // Si hay reserva en el estado, configurarla
     if (location.state?.reservation) {
       setReservation(location.state.reservation);
       setPaymentData(prev => ({
         ...prev,
-        email: user.email,
-        phone: user.phone
+        email: user.email || '',
+        phone: user.telefono || user.phone || ''
       }));
     } else {
-      navigate('/reserva');
+      // Si no hay reserva, redirigir a canchas
+      navigate('/canchas');
     }
-  }, [user, location.state, navigate]);
+  }, [user, authLoading, location.state, location.pathname, navigate]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -91,6 +103,40 @@ const Payment = ({ user }) => {
     return true;
   };
 
+  const formatTime12h = (time24h) => {
+    if (!time24h) return 'N/A';
+    const [hours, minutes] = time24h.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      if (dateString.toDate) {
+        return dateString.toDate().toLocaleDateString('es-PE');
+      }
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'N/A';
+      return date.toLocaleDateString('es-PE');
+    } catch {
+      return 'N/A';
+    }
+  };
+
+  const calculateDuration = (horaInicio, horaFin) => {
+    if (!horaInicio || !horaFin) return 0;
+    const [startHours, startMinutes] = horaInicio.split(':').map(Number);
+    const [endHours, endMinutes] = horaFin.split(':').map(Number);
+    const startTotal = startHours * 60 + startMinutes;
+    let endTotal = endHours * 60 + endMinutes;
+    if (endTotal < startTotal) {
+      endTotal += 24 * 60;
+    }
+    return Math.round((endTotal - startTotal) / 60);
+  };
+
   const processPayment = async () => {
     if (!validatePaymentData()) return;
 
@@ -98,59 +144,51 @@ const Payment = ({ user }) => {
     setError('');
 
     try {
+      if (!reservation || !reservation.id) {
+        throw new Error('Reserva no válida');
+      }
+
       // Simular procesamiento de pago
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Simular respuesta exitosa del procesador de pagos
-      const paymentResult = {
-        success: true,
-        transactionId: `TXN_${Date.now()}`,
-        amount: reservation.total,
-        currency: 'PEN',
-        timestamp: new Date().toISOString()
+      // Actualizar reserva en Firestore con información de pago
+      await reservaRepository.update(reservation.id, {
+        estadoPago: 'pagado',
+        metodoPago: paymentData.cardName ? 'Tarjeta' : 'Efectivo',
+        fechaActualizacion: new Date()
+      });
+
+      // Preparar datos para la página de confirmación
+      const updatedReservation = {
+        ...reservation,
+        estadoPago: 'pagado',
+        metodoPago: paymentData.cardName ? 'Tarjeta' : 'Efectivo'
       };
 
-      if (paymentResult.success) {
-        // Actualizar reserva con información de pago
-        const updatedReservation = {
-          ...reservation,
-          payment: {
-            transactionId: paymentResult.transactionId,
-            amount: paymentResult.amount,
-            currency: paymentResult.currency,
-            status: 'completed',
-            timestamp: paymentResult.timestamp,
-            method: 'card'
-          },
-          status: 'confirmed'
-        };
-
-        // Actualizar reserva en la base de datos
-        const response = await fetch(`http://localhost:4000/reservations/${reservation.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(updatedReservation),
-        });
-
-        if (response.ok) {
-          navigate('/confirmation', { state: { reservation: updatedReservation } });
-        } else {
-          setError('Error al confirmar la reserva');
-        }
-      } else {
-        setError('Error en el procesamiento del pago');
-      }
+      navigate('/confirmation', { state: { reservation: updatedReservation } });
     } catch (err) {
+      console.info('Error processing payment:', err);
       setError('Error al procesar el pago. Inténtalo de nuevo.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!reservation) {
-    return <div>Cargando...</div>;
+  // Mostrar spinner mientras carga la autenticación o la reserva
+  if (authLoading || !reservation) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-10 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-700">
+          <Spinner color="success" />
+          <span>{authLoading ? 'Verificando sesión...' : 'Cargando reserva...'}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Si no hay usuario después de cargar, no mostrar nada (ya se redirigió)
+  if (!user) {
+    return null;
   }
 
   return (
@@ -170,24 +208,26 @@ const Payment = ({ user }) => {
               <div className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span>Fecha:</span>
-                  <span>{new Date(reservation.date).toLocaleDateString('es-PE')}</span>
+                  <span className="font-semibold">{formatDate(reservation.fecha || reservation.date)}</span>
                 </div>
                 <div className="flex items-center justify-between mb-2">
-                  <span>Hora:</span>
-                  <span>{reservation.time}</span>
+                  <span>Hora de Inicio:</span>
+                  <span className="font-semibold">{formatTime12h(reservation.horaInicio || reservation.time)}</span>
+                </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span>Hora de Fin:</span>
+                  <span className="font-semibold">{formatTime12h(reservation.horaFin)}</span>
                 </div>
                 <div className="flex items-center justify-between mb-2">
                   <span>Duración:</span>
-                  <span>{reservation.duration} horas</span>
+                  <span className="font-semibold">
+                    {reservation.duration || (reservation.horaInicio && reservation.horaFin ? calculateDuration(reservation.horaInicio, reservation.horaFin) : 'N/A')} horas
+                  </span>
                 </div>
-                <div className="flex items-center justify-between mb-2">
-                  <span>Jugadores:</span>
-                  <span>{reservation.players}</span>
-                </div>
-                <hr />
+                <hr className="my-3" />
                 <div className="flex items-center justify-between font-semibold text-2xl text-success">
                   <span>Total a Pagar:</span>
-                  <span>S/ {reservation.total}</span>
+                  <span>S/ {reservation.precioTotal || reservation.total || 0}</span>
                 </div>
               </div>
             </Card>

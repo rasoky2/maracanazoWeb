@@ -71,18 +71,77 @@ export class ReservaRepository {
   // Obtener reservas por cancha y fecha
   async getByCanchaAndDate(canchaId, date) {
     try {
-      const q = query(
-        collection(db, this.collection),
-        where('idCancha', '==', canchaId),
-        where('fecha', '==', date),
-        where('estadoPago', 'in', ['pendiente', 'pagado']),
-        orderBy('horaInicio')
-      );
+      // Función auxiliar para convertir tiempo a minutos
+      const timeToMinutes = (time) => {
+        if (!time) return 0;
+        const [hours, minutes] = time.split(':').map(Number);
+        return hours * 60 + minutes;
+      };
+
+      // Primero intentar con orderBy, si falla por índice, hacer sin orderBy
+      let q;
+      try {
+        q = query(
+          collection(db, this.collection),
+          where('idCancha', '==', canchaId),
+          where('fecha', '==', date),
+          where('estadoPago', 'in', ['pendiente', 'pagado']),
+          orderBy('horaInicio')
+        );
+      } catch (indexError) {
+        // Si falla por índice, hacer la consulta sin orderBy
+        console.info('Index error, querying without orderBy:', indexError);
+        q = query(
+          collection(db, this.collection),
+          where('idCancha', '==', canchaId),
+          where('fecha', '==', date),
+          where('estadoPago', 'in', ['pendiente', 'pagado'])
+        );
+      }
+      
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => Reserva.fromFirestore(doc));
+      const reservas = querySnapshot.docs.map(doc => Reserva.fromFirestore(doc));
+      
+      console.info(`Consulta exitosa: ${reservas.length} reservas encontradas para cancha ${canchaId} en fecha ${date}`);
+      
+      // Ordenar en memoria si no se pudo ordenar en la consulta
+      return reservas.sort((a, b) => {
+        const horaA = timeToMinutes(a.horaInicio);
+        const horaB = timeToMinutes(b.horaInicio);
+        return horaA - horaB;
+      });
     } catch (error) {
       console.info('Error getting reservas by cancha and date:', error);
-      throw error;
+      // Si falla completamente, intentar sin filtro de estadoPago
+      try {
+        const timeToMinutes = (time) => {
+          if (!time) return 0;
+          const [hours, minutes] = time.split(':').map(Number);
+          return hours * 60 + minutes;
+        };
+
+        const q = query(
+          collection(db, this.collection),
+          where('idCancha', '==', canchaId),
+          where('fecha', '==', date)
+        );
+        const querySnapshot = await getDocs(q);
+        const reservas = querySnapshot.docs.map(doc => Reserva.fromFirestore(doc));
+        console.info(`Consulta fallback: ${reservas.length} reservas encontradas (sin filtro de estado)`);
+        
+        // Filtrar solo pendientes y pagadas en memoria
+        const reservasFiltradas = reservas.filter(r => r.estadoPago === 'pendiente' || r.estadoPago === 'pagado');
+        console.info(`Reservas filtradas (pendientes/pagadas): ${reservasFiltradas.length}`);
+        
+        return reservasFiltradas.sort((a, b) => {
+          const horaA = timeToMinutes(a.horaInicio);
+          const horaB = timeToMinutes(b.horaInicio);
+          return horaA - horaB;
+        });
+      } catch (fallbackError) {
+        console.info('Fallback query also failed:', fallbackError);
+        return [];
+      }
     }
   }
 
@@ -140,6 +199,18 @@ export class ReservaRepository {
       return true;
     } catch (error) {
       console.info('Error confirming reserva:', error);
+      throw error;
+    }
+  }
+
+  // Eliminar reserva
+  async delete(id) {
+    try {
+      const reservaRef = doc(db, this.collection, id);
+      await deleteDoc(reservaRef);
+      return true;
+    } catch (error) {
+      console.info('Error deleting reserva:', error);
       throw error;
     }
   }

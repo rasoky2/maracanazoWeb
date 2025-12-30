@@ -113,11 +113,11 @@ export class AuthService {
       const userDoc = await this.userRepository.getByEmail(email);
       
       const userData = {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        emailVerified: user.emailVerified,
-        ...userDoc
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          emailVerified: user.emailVerified,
+          ...userDoc
       };
       
       // Guardar en cache inmediatamente

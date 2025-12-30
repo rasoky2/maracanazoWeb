@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Spinner, Avatar, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Chip } from '@heroui/react';
+import { FaWhatsapp } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { ReservaRepository } from '../repositories/Reserva.repository.js';
 import { CanchaRepository } from '../repositories/Cancha.repository.js';
@@ -62,6 +63,7 @@ const Profile = () => {
           return {
             ...reserva,
             canchaName: cancha?.nombre || 'Cancha no encontrada',
+            canchaImage: cancha?.imagenPrincipal || cancha?.imagen || '/images/futbol1.jpg',
             date: reserva.fecha,
             time: reserva.horaInicio,
             duration: duracion,
@@ -92,6 +94,14 @@ const Profile = () => {
     currency: 'PEN'
   }).format(amount);
 
+  const formatTime12h = (time24h) => {
+    if (!time24h) return 'N/A';
+    const [hours, minutes] = time24h.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
   const handleEditProfile = useCallback(() => {
     navigate('/profile/edit');
   }, [navigate]);
@@ -105,13 +115,22 @@ const Profile = () => {
     setIsDetailModalOpen(true);
   }, []);
 
-  const formatTime12h = (time24h) => {
-    if (!time24h) return 'N/A';
-    const [hours, minutes] = time24h.split(':').map(Number);
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const hours12 = hours % 12 || 12;
-    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
-  };
+  const handleCancelViaWhatsApp = useCallback((reservation) => {
+    const whatsappNumber = '51992409505'; // +51 992 409 505 sin espacios ni símbolos
+    const message = `Hola, deseo cancelar mi reserva:\n\n` +
+      `ID de Reserva: #${reservation.id.slice(0, 8)}\n` +
+      `Cancha: ${reservation.canchaName}\n` +
+      `Fecha: ${formatDate(reservation.date)}\n` +
+      `Hora: ${formatTime12h(reservation.time)}\n` +
+      `Duración: ${reservation.duration} horas\n` +
+      `Total: ${formatCurrency(reservation.total)}\n\n` +
+      `Por favor, confirma la cancelación.`;
+    
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodedMessage}`;
+    
+    window.open(whatsappUrl, '_blank');
+  }, []);
 
   if (authLoading) {
     return null;
@@ -218,7 +237,15 @@ const Profile = () => {
                             <td className="py-2 pr-4">
                               <div className="flex gap-2">
                                 {reservation.estadoPago === 'pendiente' && (
-                                  <Button size="sm" color="danger">Cancelar</Button>
+                                  <Button 
+                                    size="sm" 
+                                    color="success"
+                                    startContent={<FaWhatsapp />}
+                                    onPress={() => handleCancelViaWhatsApp(reservation)}
+                                    className="bg-[#25D366] text-white hover:bg-[#20BA5A]"
+                                  >
+                                    Cancelar por WhatsApp
+                                  </Button>
                                 )}
                                 <Button 
                                   size="sm" 
@@ -250,6 +277,15 @@ const Profile = () => {
           <ModalBody>
             {selectedReservation && (
               <div className="space-y-4">
+                {/* Imagen de la cancha */}
+                <div className="flex justify-center mb-4">
+                  <img 
+                    src={selectedReservation.canchaImage || '/images/futbol1.jpg'}
+                    alt={selectedReservation.canchaName}
+                    className="w-full max-w-md h-48 object-cover rounded-lg shadow-md"
+                  />
+                </div>
+                
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-gray-500 mb-1">ID de Reserva</p>

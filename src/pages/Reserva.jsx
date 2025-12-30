@@ -9,7 +9,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase.config.js';
 
 const Reserva = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [cancha, setCancha] = useState(null);
@@ -17,7 +17,7 @@ const Reserva = () => {
   const [selectedDay, setSelectedDay] = useState(null);
   const [reservationData, setReservationData] = useState({
     date: '',
-    duration: '2',
+    duration: '1',
     notes: ''
   });
 
@@ -33,20 +33,31 @@ const Reserva = () => {
 
   const getDateForDay = (dayIndex) => {
     const today = new Date();
-    const currentDay = today.getDay();
+    // Normalizar la fecha de hoy a medianoche local para evitar problemas de zona horaria
+    const todayNormalized = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const currentDay = todayNormalized.getDay();
     let daysUntilTarget = dayIndex - currentDay;
     
-    if (daysUntilTarget <= 0) {
+    // Si es hoy (daysUntilTarget === 0), devolver hoy
+    // Si ya pasó (daysUntilTarget < 0), sumar 7 días para la próxima semana
+    if (daysUntilTarget < 0) {
       daysUntilTarget += 7;
     }
     
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + daysUntilTarget);
-    return targetDate.toISOString().split('T')[0];
+    const targetDate = new Date(todayNormalized);
+    targetDate.setDate(todayNormalized.getDate() + daysUntilTarget);
+    
+    // Usar métodos locales para evitar problemas de zona horaria
+    const year = targetDate.getFullYear();
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const day = String(targetDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const formatDateDisplay = (dateString) => {
-    const date = new Date(dateString);
+    // Parsear la fecha directamente sin usar Date constructor con string para evitar problemas de zona horaria
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('es-PE', { day: 'numeric', month: 'short' });
   };
 
@@ -70,26 +81,120 @@ const Reserva = () => {
   const discountService = new DiscountService();
 
   useEffect(() => {
+    // Esperar a que termine la carga de autenticación antes de cargar datos
+    if (authLoading) {
+      return;
+    }
+
     loadCancha();
     
+    // Inicializar con hoy primero
     const today = new Date();
     const currentDayIndex = today.getDay();
-    const tomorrowDayIndex = currentDayIndex === 6 ? 0 : currentDayIndex + 1;
-    const tomorrowDay = daysOfWeek.find(d => d.dayIndex === tomorrowDayIndex) || daysOfWeek[0];
+    // Usar métodos locales para evitar problemas de zona horaria
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayDate = `${year}-${month}-${day}`;
+    const todayDay = daysOfWeek.find(d => d.dayIndex === currentDayIndex) || daysOfWeek[0];
     
-    setSelectedDay(tomorrowDay.key);
-    const tomorrowDate = getDateForDay(tomorrowDayIndex);
+    // Seleccionar hoy por defecto
+    setSelectedDay(todayDay.key);
     setReservationData(prev => ({
       ...prev,
-      date: tomorrowDate
+      date: todayDate
     }));
-  }, [id]);
+  }, [id, authLoading]);
+
+  // Verificar disponibilidad de hoy y cambiar al siguiente día si no hay horarios disponibles
+  useEffect(() => {
+    if (!cancha || !reservationData.date || !selectedDay) return;
+    
+    const checkAndSetNextDay = async () => {
+      try {
+        // Cargar horarios para la fecha actual
+        const reservasExistentes = await reservaRepository.getByCanchaAndDate(cancha.id, reservationData.date);
+        
+        // Generar slots para verificar disponibilidad
+        const startHour = 7;
+        const endHour = 24;
+        let hasAvailableSlots = false;
+        
+        for (let hour = startHour; hour < endHour; hour++) {
+          const time = `${hour.toString().padStart(2, '0')}:00`;
+          
+          const estaOcupado = reservasExistentes.some(reserva => {
+            const reservaInicio = timeToMinutes(reserva.horaInicio);
+            const reservaFin = timeToMinutes(reserva.horaFin);
+            const horarioInicio = timeToMinutes(time);
+            const horarioFin = timeToMinutes(`${(hour + 1).toString().padStart(2, '0')}:00`);
+            
+            return (
+              (horarioInicio >= reservaInicio && horarioInicio < reservaFin) ||
+              (horarioFin > reservaInicio && horarioFin <= reservaFin) ||
+              (horarioInicio <= reservaInicio && horarioFin >= reservaFin)
+            );
+          });
+          
+          if (!estaOcupado) {
+            hasAvailableSlots = true;
+            break;
+          }
+        }
+        
+        // Si no hay horarios disponibles y estamos en hoy, cambiar al siguiente día
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const todayDateStr = `${year}-${month}-${day}`;
+        
+        if (!hasAvailableSlots && reservationData.date === todayDateStr) {
+          const currentDayIndex = today.getDay();
+          const tomorrowDayIndex = currentDayIndex === 6 ? 0 : currentDayIndex + 1;
+          const tomorrowDay = daysOfWeek.find(d => d.dayIndex === tomorrowDayIndex) || daysOfWeek[0];
+          const tomorrowDate = getDateForDay(tomorrowDayIndex);
+          
+          setSelectedDay(tomorrowDay.key);
+          setReservationData(prev => ({
+            ...prev,
+            date: tomorrowDate
+          }));
+        }
+      } catch (error) {
+        console.info('Error checking availability:', error);
+      }
+    };
+    
+    // Solo verificar si estamos en el día inicial (hoy)
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayDateStr = `${year}-${month}-${day}`;
+    if (reservationData.date === todayDateStr) {
+      checkAndSetNextDay();
+    }
+  }, [cancha, reservationData.date, selectedDay]);
 
   useEffect(() => {
     if (cancha && reservationData.date) {
       loadHorarios();
     }
   }, [cancha, reservationData.date]);
+
+  // Limpiar selección cuando cambia la duración y no hay espacio suficiente
+  useEffect(() => {
+    if (selectedSlot && reservationData.duration && timeSlots.length > 0) {
+      const duration = parseInt(reservationData.duration);
+      if (!canCheckAvailabilityForDuration(selectedSlot.time, duration)) {
+        setSelectedSlot(null);
+        setError(`No hay suficiente espacio disponible para ${duration} hora(s) desde el horario seleccionado`);
+      } else {
+        setError('');
+      }
+    }
+  }, [reservationData.duration, timeSlots]);
 
   const loadCancha = async () => {
     try {
@@ -120,7 +225,22 @@ const Reserva = () => {
       const horarioDoc = await getDoc(horarioDocRef);
       
       // Cargar reservas existentes para esa fecha
-      const reservasExistentes = await reservaRepository.getByCanchaAndDate(cancha.id, reservationData.date);
+      let reservasExistentes = [];
+      try {
+        reservasExistentes = await reservaRepository.getByCanchaAndDate(cancha.id, reservationData.date);
+        console.info(`Reservas encontradas para ${reservationData.date} en cancha ${cancha.id}:`, reservasExistentes.length);
+        if (reservasExistentes.length > 0) {
+          console.info('Detalles de reservas:', reservasExistentes.map(r => ({
+            id: r.id,
+            horaInicio: r.horaInicio,
+            horaFin: r.horaFin,
+            estadoPago: r.estadoPago
+          })));
+        }
+      } catch (error) {
+        console.error('Error al cargar reservas existentes:', error);
+        // Continuar sin reservas si hay error, pero mostrar en consola
+      }
       
       let slots = [];
       
@@ -132,22 +252,36 @@ const Reserva = () => {
         slots = horarios.map(horario => {
           // Verificar si está ocupado
           const estaOcupado = reservasExistentes.some(reserva => {
+            if (!reserva.horaInicio || !reserva.horaFin) {
+              console.warn('Reserva sin horas válidas:', reserva);
+              return false;
+            }
+            
             const reservaInicio = timeToMinutes(reserva.horaInicio);
             const reservaFin = timeToMinutes(reserva.horaFin);
             const horarioInicio = timeToMinutes(horario.hora);
             const horarioFin = timeToMinutes(horario.horaFin);
             
-            return (
+            // Verificar si hay solapamiento de horarios
+            const haySolapamiento = (
               (horarioInicio >= reservaInicio && horarioInicio < reservaFin) ||
               (horarioFin > reservaInicio && horarioFin <= reservaFin) ||
               (horarioInicio <= reservaInicio && horarioFin >= reservaFin)
             );
+            
+            if (haySolapamiento) {
+              console.info(`Horario ${horario.hora} ocupado por reserva ${reserva.id} (${reserva.horaInicio}-${reserva.horaFin}, estado: ${reserva.estadoPago})`);
+            }
+            
+            return haySolapamiento;
           });
+          
+          const isTimeValid = isTimeSlotAvailable(horario.hora, reservationData.date);
           
           return {
             time: horario.hora,
             price: horario.precio,
-            available: horario.disponible && !estaOcupado
+            available: horario.disponible && !estaOcupado && isTimeValid
           };
         });
       } else {
@@ -161,22 +295,33 @@ const Reserva = () => {
           
           // Verificar si está ocupado
           const estaOcupado = reservasExistentes.some(reserva => {
+            if (!reserva.horaInicio || !reserva.horaFin) return false;
+            
             const reservaInicio = timeToMinutes(reserva.horaInicio);
             const reservaFin = timeToMinutes(reserva.horaFin);
             const horarioInicio = timeToMinutes(time);
             const horarioFin = timeToMinutes(`${(hour + 1).toString().padStart(2, '0')}:00`);
             
-            return (
+            // Verificar si hay solapamiento de horarios
+            const haySolapamiento = (
               (horarioInicio >= reservaInicio && horarioInicio < reservaFin) ||
               (horarioFin > reservaInicio && horarioFin <= reservaFin) ||
               (horarioInicio <= reservaInicio && horarioFin >= reservaFin)
             );
+            
+            if (haySolapamiento) {
+              console.info(`Horario ${time} ocupado por reserva ${reserva.id} (${reserva.horaInicio}-${reserva.horaFin})`);
+            }
+            
+            return haySolapamiento;
           });
+          
+          const isTimeValid = isTimeSlotAvailable(time, reservationData.date);
           
           slots.push({
             time,
             price,
-            available: !estaOcupado
+            available: !estaOcupado && isTimeValid
           });
         }
       }
@@ -194,6 +339,36 @@ const Reserva = () => {
   const timeToMinutes = (time) => {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
+  };
+
+  // Verificar si un horario está disponible según la hora actual y el margen de anticipación
+  const isTimeSlotAvailable = (slotTime, selectedDate) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // Parsear la fecha seleccionada
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const selectedDateObj = new Date(year, month - 1, day);
+    
+    // Si la fecha seleccionada es hoy, verificar la hora
+    if (selectedDateObj.getTime() === today.getTime()) {
+      const [slotHours, slotMinutes] = slotTime.split(':').map(Number);
+      const slotTimeObj = new Date(now.getFullYear(), now.getMonth(), now.getDate(), slotHours, slotMinutes);
+      
+      // Margen de gracia: 15 minutos después del inicio del horario
+      // Si son las 8:05 PM, todavía puede reservar las 8:00 PM (pasaron solo 5 minutos)
+      // Si son las 8:15 PM o más, ya no puede reservar las 8:00 PM (pasaron más de 15 minutos)
+      const graceMinutes = 15;
+      const maxAvailableTime = new Date(slotTimeObj.getTime() + graceMinutes * 60 * 1000);
+      
+      // Si ya pasaron más de 15 minutos desde el inicio del horario, no está disponible
+      if (now > maxAvailableTime) {
+        return false;
+      }
+    }
+    
+    // Si la fecha es futura, el horario está disponible (solo se verifica ocupación)
+    return true;
   };
 
   const generateTimeSlots = (canchaData) => {
@@ -216,16 +391,66 @@ const Reserva = () => {
 
   const handleSlotSelect = (slot) => {
     if (slot.available) {
-      setSelectedSlot(slot);
-      setError('');
+      // Verificar que el horario tenga suficiente espacio para la duración seleccionada
+      const duration = parseInt(reservationData.duration);
+      if (canCheckAvailabilityForDuration(slot.time, duration)) {
+        setSelectedSlot(slot);
+        setError('');
+      } else {
+        setError(`No hay suficiente espacio disponible para ${duration} hora(s) desde las ${formatTime12h(slot.time)}`);
+      }
     }
   };
 
   const handleInputChange = (e) => {
-    setReservationData({
+    const newData = {
       ...reservationData,
       [e.target.name]: e.target.value
-    });
+    };
+    setReservationData(newData);
+    
+    // Si cambia la duración y hay un slot seleccionado, verificar disponibilidad
+    if (e.target.name === 'duration' && selectedSlot) {
+      const duration = parseInt(e.target.value);
+      if (!canCheckAvailabilityForDuration(selectedSlot.time, duration)) {
+        setSelectedSlot(null);
+        setError(`No hay suficiente espacio disponible para ${duration} hora(s) desde el horario seleccionado`);
+      }
+    }
+  };
+
+  // Verificar si hay suficiente espacio disponible para una duración desde un horario específico
+  const canCheckAvailabilityForDuration = (startTime, duration) => {
+    if (!timeSlots.length) return false;
+    
+    const startIndex = timeSlots.findIndex(slot => slot.time === startTime);
+    if (startIndex === -1) return false;
+    
+    // Verificar que todos los slots necesarios estén disponibles
+    for (let i = 0; i < duration; i++) {
+      const slotIndex = startIndex + i;
+      if (slotIndex >= timeSlots.length) return false;
+      if (!timeSlots[slotIndex].available) return false;
+    }
+    
+    return true;
+  };
+
+  // Obtener los horarios que estarían ocupados si se selecciona un horario con la duración actual
+  const getOccupiedSlotsForSelection = (startTime, duration) => {
+    if (!startTime || !duration) return [];
+    
+    const startIndex = timeSlots.findIndex(slot => slot.time === startTime);
+    if (startIndex === -1) return [];
+    
+    const occupied = [];
+    for (let i = 0; i < duration; i++) {
+      const slotIndex = startIndex + i;
+      if (slotIndex < timeSlots.length) {
+        occupied.push(timeSlots[slotIndex].time);
+      }
+    }
+    return occupied;
   };
 
   const calculateSubtotal = () => {
@@ -290,6 +515,12 @@ const Reserva = () => {
   };
 
   const handleReservation = async () => {
+    // Esperar a que termine la carga de autenticación
+    if (authLoading) {
+      setError('Verificando sesión...');
+      return;
+    }
+
     // Verificar si el usuario está autenticado antes de continuar
     if (!user) {
       setError('Debes iniciar sesión para realizar una reserva');
@@ -359,12 +590,12 @@ const Reserva = () => {
     return `${endHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   };
 
-  if (loadingCancha) {
+  if (authLoading || loadingCancha) {
     return (
       <div className="min-h-screen bg-gray-50 py-10 flex items-center justify-center">
         <div className="flex items-center gap-3 text-gray-700">
           <Spinner color="success" />
-          <span>Cargando cancha...</span>
+          <span>{authLoading ? 'Verificando sesión...' : 'Cargando cancha...'}</span>
         </div>
       </div>
     );
@@ -461,56 +692,123 @@ const Reserva = () => {
                     <span className="ml-3">Cargando horarios...</span>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {timeSlots.map((slot, index) => (
-                      <button
-                        key={index}
-                        type="button"
-                        disabled={!slot.available}
-                        onClick={() => {
-                          if (slot.available) {
-                            handleSlotSelect(slot);
-                          }
-                        }}
-                        className={`p-3 rounded-lg border-2 transition-all text-left flex items-center justify-between ${
-                          !slot.available 
-                            ? 'border-green-700 bg-green-800 cursor-not-allowed' 
-                            : selectedSlot?.time === slot.time 
-                            ? 'border-green-500 bg-green-50 ring-2 ring-green-300 shadow-md' 
-                            : 'border-gray-200 bg-white hover:border-green-300 hover:bg-green-50 hover:shadow-sm'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`text-base font-bold ${
-                            !slot.available 
-                              ? 'text-white' 
-                              : selectedSlot?.time === slot.time 
-                              ? 'text-green-700' 
-                              : 'text-gray-900'
-                          }`}>
-                            {formatTime12h(slot.time)}
-                          </div>
-                          {slot.available ? (
-                            <span className="px-2 py-0.5 rounded-full bg-green-500 text-white text-xs font-medium">
-                              Disponible
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-green-900 text-white text-xs font-medium border border-green-700">
-                              Ocupado
+                  <div className="space-y-2">
+                    {reservationData.duration && (
+                      <div className="mb-3 p-2 rounded-lg bg-blue-50 border border-blue-200">
+                        <p className="text-sm text-blue-800 m-0">
+                          <strong>Duración seleccionada:</strong> {reservationData.duration} hora(s). 
+                          {selectedSlot && (
+                            <span className="ml-2">
+                              Reserva desde <strong>{formatTime12h(selectedSlot.time)}</strong> hasta <strong>{formatTime12h(calculateEndTime(selectedSlot.time, parseInt(reservationData.duration)))}</strong>
                             </span>
                           )}
-                        </div>
-                        <div className={`text-base font-bold ${
-                          !slot.available 
-                            ? 'text-white opacity-75' 
-                            : selectedSlot?.time === slot.time 
-                            ? 'text-green-700' 
-                            : 'text-success'
-                        }`}>
-                          S/ {slot.price}
-                        </div>
-                      </button>
-                    ))}
+                        </p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto custom-scrollbar">
+                      {timeSlots.map((slot, index) => {
+                        const duration = parseInt(reservationData.duration) || 1;
+                        const isTimeValid = isTimeSlotAvailable(slot.time, reservationData.date);
+                        const canReserve = slot.available && canCheckAvailabilityForDuration(slot.time, duration) && isTimeValid;
+                        const isSelected = selectedSlot?.time === slot.time;
+                        const occupiedForSelection = selectedSlot 
+                          ? getOccupiedSlotsForSelection(selectedSlot.time, duration).includes(slot.time)
+                          : false;
+                        const wouldBeOccupied = !isSelected && selectedSlot && occupiedForSelection;
+                        const isPastOrTooClose = !isTimeValid;
+                        
+                        return (
+                          <button
+                            key={index}
+                            type="button"
+                            disabled={!canReserve}
+                            onClick={() => {
+                              if (canReserve) {
+                                handleSlotSelect(slot);
+                              }
+                            }}
+                            className={`p-3 rounded-lg border-2 transition-all text-left flex items-center justify-between ${
+                              isPastOrTooClose
+                                ? 'border-gray-300 bg-gray-100 cursor-not-allowed opacity-50'
+                                : !slot.available 
+                                ? 'border-gray-300 bg-gray-200 cursor-not-allowed opacity-70' 
+                                : !canReserve && slot.available
+                                ? 'border-orange-300 bg-orange-50 cursor-not-allowed'
+                                : wouldBeOccupied
+                                ? 'border-blue-300 bg-blue-50'
+                                : isSelected 
+                                ? 'border-green-500 bg-green-50 ring-2 ring-green-300 shadow-md' 
+                                : 'border-gray-200 bg-white hover:border-green-300 hover:bg-green-50 hover:shadow-sm'
+                            }`}
+                            title={
+                              isPastOrTooClose 
+                                ? 'Este horario ya pasó o falta menos de 15 minutos' 
+                                : !canReserve && slot.available 
+                                ? `No hay suficiente espacio para ${duration} hora(s)` 
+                                : ''
+                            }
+                          >
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className={`text-base font-bold ${
+                                isPastOrTooClose
+                                  ? 'text-gray-500'
+                                  : !slot.available 
+                                  ? 'text-gray-600' 
+                                  : !canReserve && slot.available
+                                  ? 'text-orange-700'
+                                  : wouldBeOccupied
+                                  ? 'text-blue-700'
+                                  : isSelected 
+                                  ? 'text-green-700' 
+                                  : 'text-gray-900'
+                              }`}>
+                                {formatTime12h(slot.time)}
+                              </div>
+                              {isPastOrTooClose ? (
+                                <span className="px-2 py-0.5 rounded-full bg-gray-400 text-white text-xs font-medium">
+                                  Pasado
+                                </span>
+                              ) : !slot.available ? (
+                                <span className="px-2 py-0.5 rounded-full bg-yellow-400/30 text-yellow-700 text-xs font-medium border border-yellow-400/50">
+                                  Reservado
+                                </span>
+                              ) : !canReserve ? (
+                                <span className="px-2 py-0.5 rounded-full bg-orange-500 text-white text-xs font-medium">
+                                  Insuficiente
+                                </span>
+                              ) : wouldBeOccupied ? (
+                                <span className="px-2 py-0.5 rounded-full bg-blue-500 text-white text-xs font-medium">
+                                  En rango
+                                </span>
+                              ) : isSelected ? (
+                                <span className="px-2 py-0.5 rounded-full bg-green-600 text-white text-xs font-medium">
+                                  Seleccionado
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full bg-green-500 text-white text-xs font-medium">
+                                  Disponible
+                                </span>
+                              )}
+                            </div>
+                            <div className={`text-base font-bold ${
+                              isPastOrTooClose
+                                ? 'text-gray-500'
+                                : !slot.available 
+                                ? 'text-gray-500 opacity-70' 
+                                : !canReserve && slot.available
+                                ? 'text-orange-700'
+                                : wouldBeOccupied
+                                ? 'text-blue-700'
+                                : isSelected 
+                                ? 'text-green-700' 
+                                : 'text-success'
+                            }`}>
+                              S/ {slot.price}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -546,21 +844,35 @@ const Reserva = () => {
                     name="date"
                     label="Fecha de Reserva"
                     value={reservationData.date}
-                    onChange={handleInputChange}
+                    onChange={(e) => {
+                      const newDate = e.target.value;
+                      setReservationData(prev => ({
+                        ...prev,
+                        date: newDate
+                      }));
+                      // Sincronizar el selector de días con la fecha seleccionada
+                      const selectedDate = new Date(newDate);
+                      const selectedDayIndex = selectedDate.getDay();
+                      const matchingDay = daysOfWeek.find(d => d.dayIndex === selectedDayIndex);
+                      if (matchingDay) {
+                        setSelectedDay(matchingDay.key);
+                      }
+                      setSelectedSlot(null);
+                    }}
                     min={new Date().toISOString().split('T')[0]}
                     isRequired
                   />
 
                   <div>
-                    <Select
-                      label="Duración (horas)"
-                      name="duration"
-                      selectedKeys={[String(reservationData.duration)]}
+                  <Select
+                    label="Duración (horas)"
+                    name="duration"
+                    selectedKeys={[String(reservationData.duration)]}
                       onSelectionChange={(keys) => {
                         const duration = Array.from(keys)[0];
                         handleInputChange({ target: { name: 'duration', value: duration } });
                       }}
-                    >
+                  >
                       <SelectItem key="1" value="1">
                         1 hora
                       </SelectItem>
@@ -573,7 +885,13 @@ const Reserva = () => {
                       <SelectItem key="4" value="4">
                         4 horas
                       </SelectItem>
-                    </Select>
+                      <SelectItem key="5" value="5">
+                        5 horas
+                      </SelectItem>
+                      <SelectItem key="6" value="6">
+                        6 horas
+                      </SelectItem>
+                  </Select>
                     {selectedSlot && reservationData.duration && (
                       <div className="mt-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
                         <p className="text-sm font-semibold text-blue-900 mb-1">Rango de alquiler:</p>

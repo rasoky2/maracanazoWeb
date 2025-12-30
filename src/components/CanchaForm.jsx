@@ -146,13 +146,49 @@ const CanchaForm = ({ isOpen, onClose, cancha = null, onSuccess }) => {
     e.target.value = '';
   };
 
+  // Convertir imagen a WebP
+  const convertToWebP = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          
+          canvas.toBlob(
+            (webpBlob) => {
+              if (webpBlob) {
+                resolve(webpBlob);
+              } else {
+                reject(new Error('Error al convertir a WebP'));
+              }
+            },
+            'image/webp',
+            0.85 // Calidad del 85% para balance entre tamaño y calidad
+          );
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
   const handleCropComplete = async (blob, field) => {
     try {
       setUploadingImages(prev => ({ ...prev, [field]: true }));
       
+      // Convertir a WebP antes de subir
+      const webpBlob = await convertToWebP(blob);
+      
       const canchaId = cancha?.id || `temp_${Date.now()}`;
-      const imagePath = storageService.generateImagePath(canchaId, field, 'jpg');
-      const imageUrl = await storageService.uploadImageFromBlob(blob, imagePath);
+      const imagePath = storageService.generateImagePath(canchaId, field, 'webp');
+      const imageUrl = await storageService.uploadImageFromBlob(webpBlob, imagePath);
       
       handleInputChange(field, imageUrl);
       setUploadingImages(prev => ({ ...prev, [field]: false }));
