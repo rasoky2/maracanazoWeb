@@ -39,10 +39,22 @@ const ProfileEdit = () => {
   }, [user, authLoading, navigate]);
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    // Validación especial para teléfono (solo números, máximo 9 dígitos)
+    if (field === 'telefono') {
+      // Solo permitir números
+      const numericValue = value.replace(/\D/g, '');
+      // Limitar a 9 dígitos
+      const limitedValue = numericValue.slice(0, 9);
+      setFormData(prev => ({
+        ...prev,
+        [field]: limitedValue
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
     setError('');
     setSuccess('');
   };
@@ -50,6 +62,12 @@ const ProfileEdit = () => {
   const handleSave = async () => {
     if (!formData.nombreCompleto.trim()) {
       setError('El nombre completo es requerido');
+      return;
+    }
+
+    // Validar teléfono peruano (9 dígitos) si se proporciona
+    if (formData.telefono && formData.telefono.length !== 9) {
+      setError('El teléfono debe tener exactamente 9 dígitos');
       return;
     }
 
@@ -307,10 +325,12 @@ const ProfileEdit = () => {
 
             <Input
               label="Teléfono"
-              placeholder="Ingresa tu número de teléfono"
+              placeholder="999999999"
               value={formData.telefono}
               onValueChange={(value) => handleInputChange('telefono', value)}
               variant="bordered"
+              maxLength={9}
+              description="Ingresa 9 dígitos"
             />
 
             <Input

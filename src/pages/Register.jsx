@@ -21,10 +21,24 @@ const Register = () => {
 
   const handlers = useMemo(() => ({
     handleChange: e => {
-      setFormData(prev => ({
-        ...prev,
-        [e.target.name]: e.target.value
-      }));
+      const { name, value } = e.target;
+      
+      // Validación especial para teléfono (solo números, máximo 9 dígitos)
+      if (name === 'phone') {
+        // Solo permitir números
+        const numericValue = value.replace(/\D/g, '');
+        // Limitar a 9 dígitos
+        const limitedValue = numericValue.slice(0, 9);
+        setFormData(prev => ({
+          ...prev,
+          [name]: limitedValue
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          [name]: value
+        }));
+      }
     },
     handleSubmit: async e => {
       e.preventDefault();
@@ -39,6 +53,13 @@ const Register = () => {
 
       if (formData.password.length < MIN_PASSWORD_LENGTH) {
         setError('La contraseña debe tener al menos 6 caracteres');
+        setLoading(false);
+        return;
+      }
+
+      // Validar teléfono peruano (9 dígitos)
+      if (!formData.phone || formData.phone.length !== 9) {
+        setError('El teléfono debe tener exactamente 9 dígitos');
         setLoading(false);
         return;
       }
@@ -106,7 +127,9 @@ const Register = () => {
                 label="Teléfono"
                 value={formData.phone}
                 onChange={handlers.handleChange}
-                placeholder="+51 999 999 999"
+                placeholder="999999999"
+                maxLength={9}
+                description="Ingresa 9 dígitos"
                 isRequired
               />
             </div>

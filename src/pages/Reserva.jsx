@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Button as HButton, Input, Textarea, Select, SelectItem, Chip, Spinner } from '@heroui/react';
 import { CanchaRepository } from '../repositories/Cancha.repository.js';
 import { ReservaRepository } from '../repositories/Reserva.repository.js';
+import { EventoRepository } from '../repositories/Evento.repository.js';
 import { DiscountService } from '../services/Discount.service.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { doc, getDoc } from 'firebase/firestore';
@@ -78,6 +79,7 @@ const Reserva = () => {
   const [errorDescuento, setErrorDescuento] = useState('');
   const canchaRepository = new CanchaRepository();
   const reservaRepository = new ReservaRepository();
+  const eventoRepository = new EventoRepository();
   const discountService = new DiscountService();
 
   useEffect(() => {
@@ -114,6 +116,7 @@ const Reserva = () => {
       try {
         // Cargar horarios para la fecha actual
         const reservasExistentes = await reservaRepository.getByCanchaAndDate(cancha.id, reservationData.date);
+        const eventosExistentes = await eventoRepository.getByCanchaAndDate(cancha.id, reservationData.date);
         
         // Generar slots para verificar disponibilidad
         const startHour = 7;
@@ -123,7 +126,7 @@ const Reserva = () => {
         for (let hour = startHour; hour < endHour; hour++) {
           const time = `${hour.toString().padStart(2, '0')}:00`;
           
-          const estaOcupado = reservasExistentes.some(reserva => {
+          const estaOcupadoPorReserva = reservasExistentes.some(reserva => {
             const reservaInicio = timeToMinutes(reserva.horaInicio);
             const reservaFin = timeToMinutes(reserva.horaFin);
             const horarioInicio = timeToMinutes(time);
@@ -135,8 +138,22 @@ const Reserva = () => {
               (horarioInicio <= reservaInicio && horarioFin >= reservaFin)
             );
           });
+
+          const estaOcupadoPorEvento = eventosExistentes.some(evento => {
+            if (!evento.activo) return false;
+            const eventoInicio = timeToMinutes(evento.horaInicio);
+            const eventoFin = timeToMinutes(evento.horaFin);
+            const horarioInicio = timeToMinutes(time);
+            const horarioFin = timeToMinutes(`${(hour + 1).toString().padStart(2, '0')}:00`);
+            
+            return (
+              (horarioInicio >= eventoInicio && horarioInicio < eventoFin) ||
+              (horarioFin > eventoInicio && horarioFin <= eventoFin) ||
+              (horarioInicio <= eventoInicio && horarioFin >= eventoFin)
+            );
+          });
           
-          if (!estaOcupado) {
+          if (!estaOcupadoPorReserva && !estaOcupadoPorEvento) {
             hasAvailableSlots = true;
             break;
           }
@@ -241,6 +258,25 @@ const Reserva = () => {
         console.error('Error al cargar reservas existentes:', error);
         // Continuar sin reservas si hay error, pero mostrar en consola
       }
+
+      // Cargar eventos existentes para esa fecha
+      let eventosExistentes = [];
+      try {
+        eventosExistentes = await eventoRepository.getByCanchaAndDate(cancha.id, reservationData.date);
+        console.info(`Eventos encontrados para ${reservationData.date} en cancha ${cancha.id}:`, eventosExistentes.length);
+        if (eventosExistentes.length > 0) {
+          console.info('Detalles de eventos:', eventosExistentes.map(e => ({
+            id: e.id,
+            nombre: e.nombre,
+            horaInicio: e.horaInicio,
+            horaFin: e.horaFin,
+            activo: e.activo
+          })));
+        }
+      } catch (error) {
+        console.error('Error al cargar eventos existentes:', error);
+        // Continuar sin eventos si hay error
+      }
       
       let slots = [];
       
@@ -250,8 +286,8 @@ const Reserva = () => {
         const horarios = horariosData.horarios || [];
         
         slots = horarios.map(horario => {
-          // Verificar si está ocupado
-          const estaOcupado = reservasExistentes.some(reserva => {
+          // Verificar si está ocupado por reservas
+          const estaOcupadoPorReserva = reservasExistentes.some(reserva => {
             if (!reserva.horaInicio || !reserva.horaFin) {
               console.warn('Reserva sin horas válidas:', reserva);
               return false;
@@ -275,7 +311,33 @@ const Reserva = () => {
             
             return haySolapamiento;
           });
+
+          // Verificar si está ocupado por eventos
+          const estaOcupadoPorEvento = eventosExistentes.some(evento => {
+            if (!evento.horaInicio || !evento.horaFin || !evento.activo) {
+              return false;
+            }
+            
+            const eventoInicio = timeToMinutes(evento.horaInicio);
+            const eventoFin = timeToMinutes(evento.horaFin);
+            const horarioInicio = timeToMinutes(horario.hora);
+            const horarioFin = timeToMinutes(horario.horaFin);
+            
+            // Verificar si hay solapamiento de horarios
+            const haySolapamiento = (
+              (horarioInicio >= eventoInicio && horarioInicio < eventoFin) ||
+              (horarioFin > eventoInicio && horarioFin <= eventoFin) ||
+              (horarioInicio <= eventoInicio && horarioFin >= eventoFin)
+            );
+            
+            if (haySolapamiento) {
+              console.info(`Horario ${horario.hora} ocupado por evento ${evento.nombre} (${evento.horaInicio}-${evento.horaFin})`);
+            }
+            
+            return haySolapamiento;
+          });
           
+          const estaOcupado = estaOcupadoPorReserva || estaOcupadoPorEvento;
           const isTimeValid = isTimeSlotAvailable(horario.hora, reservationData.date);
           
           return {
@@ -293,8 +355,8 @@ const Reserva = () => {
           const time = `${hour.toString().padStart(2, '0')}:00`;
           const price = cancha.getPriceByTime ? cancha.getPriceByTime(time) : cancha.precio || 0;
           
-          // Verificar si está ocupado
-          const estaOcupado = reservasExistentes.some(reserva => {
+          // Verificar si está ocupado por reservas
+          const estaOcupadoPorReserva = reservasExistentes.some(reserva => {
             if (!reserva.horaInicio || !reserva.horaFin) return false;
             
             const reservaInicio = timeToMinutes(reserva.horaInicio);
@@ -315,7 +377,31 @@ const Reserva = () => {
             
             return haySolapamiento;
           });
+
+          // Verificar si está ocupado por eventos
+          const estaOcupadoPorEvento = eventosExistentes.some(evento => {
+            if (!evento.horaInicio || !evento.horaFin || !evento.activo) return false;
+            
+            const eventoInicio = timeToMinutes(evento.horaInicio);
+            const eventoFin = timeToMinutes(evento.horaFin);
+            const horarioInicio = timeToMinutes(time);
+            const horarioFin = timeToMinutes(`${(hour + 1).toString().padStart(2, '0')}:00`);
+            
+            // Verificar si hay solapamiento de horarios
+            const haySolapamiento = (
+              (horarioInicio >= eventoInicio && horarioInicio < eventoFin) ||
+              (horarioFin > eventoInicio && horarioFin <= eventoFin) ||
+              (horarioInicio <= eventoInicio && horarioFin >= eventoFin)
+            );
+            
+            if (haySolapamiento) {
+              console.info(`Horario ${time} ocupado por evento ${evento.nombre} (${evento.horaInicio}-${evento.horaFin})`);
+            }
+            
+            return haySolapamiento;
+          });
           
+          const estaOcupado = estaOcupadoPorReserva || estaOcupadoPorEvento;
           const isTimeValid = isTimeSlotAvailable(time, reservationData.date);
           
           slots.push({
@@ -394,8 +480,8 @@ const Reserva = () => {
       // Verificar que el horario tenga suficiente espacio para la duración seleccionada
       const duration = parseInt(reservationData.duration);
       if (canCheckAvailabilityForDuration(slot.time, duration)) {
-        setSelectedSlot(slot);
-        setError('');
+      setSelectedSlot(slot);
+      setError('');
       } else {
         setError(`No hay suficiente espacio disponible para ${duration} hora(s) desde las ${formatTime12h(slot.time)}`);
       }
@@ -719,7 +805,7 @@ const Reserva = () => {
                         
                         return (
                           <button
-                            key={index}
+                      key={index}
                             type="button"
                             disabled={!canReserve}
                             onClick={() => {
@@ -739,7 +825,7 @@ const Reserva = () => {
                                 : isSelected 
                                 ? 'border-green-500 bg-green-50 ring-2 ring-green-300 shadow-md' 
                                 : 'border-gray-200 bg-white hover:border-green-300 hover:bg-green-50 hover:shadow-sm'
-                            }`}
+                      }`}
                             title={
                               isPastOrTooClose 
                                 ? 'Este horario ya pasó o falta menos de 15 minutos' 
@@ -747,7 +833,7 @@ const Reserva = () => {
                                 ? `No hay suficiente espacio para ${duration} hora(s)` 
                                 : ''
                             }
-                          >
+                    >
                             <div className="flex items-center gap-3 flex-1">
                               <div className={`text-base font-bold ${
                                 isPastOrTooClose

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input, Select, SelectItem, Textarea } from '@heroui/react';
+import { Card, Button, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input, Select, SelectItem, Textarea, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from '@heroui/react';
 import { 
   FaUsers, 
   FaPlus, 
@@ -12,12 +12,17 @@ import {
   FaCalendarCheck,
   FaHome,
   FaVideo,
-  FaImage
+  FaImage,
+  FaEllipsisV,
+  FaSearch
 } from 'react-icons/fa';
 import { UserRepository } from '../repositories/User.repository.js';
 import { CanchaRepository } from '../repositories/Cancha.repository.js';
 import { ReservaRepository } from '../repositories/Reserva.repository.js';
+import { EventoRepository } from '../repositories/Evento.repository.js';
 import CanchaForm from '../components/CanchaForm.jsx';
+import EventoForm from '../components/EventoForm.jsx';
+import ReservaForm from '../components/ReservaForm.jsx';
 import StepsForm from '../components/StepsForm.jsx';
 import TrustedByForm from '../components/TrustedByForm.jsx';
 import VideoForm from '../components/VideoForm.jsx';
@@ -28,6 +33,9 @@ const Admin = () => {
   const [users, setUsers] = useState([]);
   const [canchas, setCanchas] = useState([]);
   const [reservas, setReservas] = useState([]);
+  const [filteredReservas, setFilteredReservas] = useState([]);
+  const [reservaSearchTerm, setReservaSearchTerm] = useState('');
+  const [eventos, setEventos] = useState([]);
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalCanchas: 0,
@@ -45,11 +53,16 @@ const Admin = () => {
   const [editingReserva, setEditingReserva] = useState(null);
   const [isDeleteConfirmModalOpen, setIsDeleteConfirmModalOpen] = useState(false);
   const [reservaToDelete, setReservaToDelete] = useState(null);
+  const [isEventoFormOpen, setIsEventoFormOpen] = useState(false);
+  const [selectedEvento, setSelectedEvento] = useState(null);
+  const [isDeleteEventoModalOpen, setIsDeleteEventoModalOpen] = useState(false);
+  const [eventoToDelete, setEventoToDelete] = useState(null);
 
   // Repositorios
   const userRepository = new UserRepository();
   const canchaRepository = new CanchaRepository();
   const reservaRepository = new ReservaRepository();
+  const eventoRepository = new EventoRepository();
 
   useEffect(() => {
     loadData();
@@ -69,10 +82,11 @@ const Admin = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [usersData, canchasData, reservasData] = await Promise.all([
+      const [usersData, canchasData, reservasData, eventosData] = await Promise.all([
         userRepository.getAll(),
         canchaRepository.getAllForAdmin(),
-        reservaRepository.getAll()
+        reservaRepository.getAll(),
+        eventoRepository.getAll()
       ]);
 
       setUsers(usersData);
@@ -90,6 +104,7 @@ const Admin = () => {
           userEmail: usuario?.email || 'N/A',
           userPhoto: usuario?.urlFoto || usuario?.photoURL || '',
           canchaName: cancha?.nombre || cancha?.name || 'Cancha no encontrada',
+          canchaImage: cancha?.imagenPrincipal || cancha?.imagen || '',
           date: reserva.fecha,
           startTime: reserva.horaInicio,
           duration: duracion,
@@ -97,7 +112,27 @@ const Admin = () => {
         };
       });
 
-      setReservas(reservasEnriquecidas);
+      // Ordenar reservas por fecha y hora (más recientes primero)
+      const reservasOrdenadas = reservasEnriquecidas.sort((a, b) => {
+        const fechaA = new Date(`${a.date}T${a.startTime}`);
+        const fechaB = new Date(`${b.date}T${b.startTime}`);
+        return fechaB - fechaA; // Descendente (más reciente primero)
+      });
+
+      setReservas(reservasOrdenadas);
+      setFilteredReservas(reservasOrdenadas);
+      setFilteredReservas(reservasOrdenadas);
+
+      // Enriquecer eventos con datos de cancha
+      const eventosEnriquecidos = eventosData.map(evento => {
+        const cancha = canchasData.find(c => c.id === evento.idCancha);
+        return {
+          ...evento,
+          canchaName: cancha?.nombre || cancha?.name || 'Cancha no encontrada',
+          canchaImage: cancha?.imagenPrincipal || cancha?.imagen || ''
+        };
+      });
+      setEventos(eventosEnriquecidos);
 
       // Calcular estadísticas
       const totalRevenue = reservasEnriquecidas.reduce((sum, r) => sum + (r.total || 0), 0);
@@ -211,22 +246,45 @@ const Admin = () => {
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
 
+  const formatPhoneNumber = (phone) => {
+    if (!phone) return 'N/A';
+    
+    const cleaned = phone.toString().trim();
+    const digits = cleaned.replace(/\D/g, '');
+    
+    // Si tiene 11 dígitos y empieza con 51, tomar los últimos 9
+    if (digits.length === 11 && digits.startsWith('51')) {
+      const phoneDigits = digits.slice(2);
+      if (phoneDigits.length === 9) {
+        return `${phoneDigits.slice(0, 3)} ${phoneDigits.slice(3, 6)} ${phoneDigits.slice(6)}`;
+      }
+    }
+    
+    // Si ya tiene +51 y 9 dígitos después
+    if (cleaned.startsWith('+51')) {
+      const phoneDigits = digits.startsWith('51') ? digits.slice(2) : digits;
+      if (phoneDigits.length === 9) {
+        return `${phoneDigits.slice(0, 3)} ${phoneDigits.slice(3, 6)} ${phoneDigits.slice(6)}`;
+      }
+      return cleaned.replace('+51', '').trim();
+    }
+    
+    // Si tiene exactamente 9 dígitos, formatear
+    if (digits.length === 9) {
+      return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+    }
+    
+    // Cualquier otro formato, devolver como está
+    return cleaned;
+  };
+
   const handleViewReservaDetails = (reserva) => {
     setSelectedReserva(reserva);
     setIsReservaDetailModalOpen(true);
   };
 
   const handleEditReserva = (reserva) => {
-    setEditingReserva({
-      ...reserva,
-      fecha: reserva.fecha,
-      horaInicio: reserva.horaInicio,
-      horaFin: reserva.horaFin,
-      estadoPago: reserva.estadoPago,
-      metodoPago: reserva.metodoPago || '',
-      notas: reserva.notas || '',
-      precioTotal: reserva.precioTotal || reserva.total || 0
-    });
+    setEditingReserva(reserva);
     setIsReservaEditModalOpen(true);
   };
 
@@ -251,26 +309,106 @@ const Admin = () => {
     }
   };
 
-  const handleSaveReservaEdit = async () => {
-    if (!editingReserva) return;
+  const handleReservaFormSuccess = () => {
+    setIsReservaEditModalOpen(false);
+    setEditingReserva(null);
+    loadData();
+  };
 
+  const handleCloseReservaForm = () => {
+    setIsReservaEditModalOpen(false);
+    setEditingReserva(null);
+  };
+
+  // Agrupar reservas por fecha
+  const groupReservasByDate = (reservasList) => {
+    const grouped = {};
+    reservasList.forEach(reserva => {
+      const fecha = reserva.date || '';
+      if (!grouped[fecha]) {
+        grouped[fecha] = [];
+      }
+      grouped[fecha].push(reserva);
+    });
+    
+    // Ordenar fechas descendente (más reciente primero)
+    return Object.keys(grouped)
+      .sort((a, b) => new Date(b) - new Date(a))
+      .map(fecha => ({
+        fecha,
+        reservas: grouped[fecha]
+      }));
+  };
+
+  // Filtrar reservas según término de búsqueda
+  useEffect(() => {
+    if (!reservaSearchTerm.trim()) {
+      setFilteredReservas(reservas);
+      return;
+    }
+
+    const searchLower = reservaSearchTerm.toLowerCase().trim();
+    const filtered = reservas.filter(reserva => {
+      const userName = (reserva.userName || '').toLowerCase();
+      const userEmail = (reserva.userEmail || '').toLowerCase();
+      const canchaName = (reserva.canchaName || '').toLowerCase();
+      const estadoPago = (reserva.estadoPago || '').toLowerCase();
+      const fecha = formatDate(reserva.date).toLowerCase();
+      const metodoPago = (reserva.metodoPago || '').toLowerCase();
+      const notas = (reserva.notas || '').toLowerCase();
+      const id = (reserva.id || '').toLowerCase();
+
+      return userName.includes(searchLower) ||
+             userEmail.includes(searchLower) ||
+             canchaName.includes(searchLower) ||
+             estadoPago.includes(searchLower) ||
+             fecha.includes(searchLower) ||
+             metodoPago.includes(searchLower) ||
+             notas.includes(searchLower) ||
+             id.includes(searchLower);
+    });
+
+    setFilteredReservas(filtered);
+  }, [reservaSearchTerm, reservas]);
+
+  const handleCreateEvento = () => {
+    setSelectedEvento(null);
+    setIsEventoFormOpen(true);
+  };
+
+  const handleEditEvento = (evento) => {
+    setSelectedEvento(evento);
+    setIsEventoFormOpen(true);
+  };
+
+  const handleDeleteEventoClick = (eventoId) => {
+    setEventoToDelete(eventoId);
+    setIsDeleteEventoModalOpen(true);
+  };
+
+  const handleConfirmDeleteEvento = async () => {
+    if (!eventoToDelete) return;
+    
     try {
-      await reservaRepository.update(editingReserva.id, {
-        fecha: editingReserva.fecha,
-        horaInicio: editingReserva.horaInicio,
-        horaFin: editingReserva.horaFin,
-        estadoPago: editingReserva.estadoPago,
-        metodoPago: editingReserva.metodoPago,
-        notas: editingReserva.notas,
-        precioTotal: editingReserva.precioTotal
-      });
-      setIsReservaEditModalOpen(false);
-      setEditingReserva(null);
+      await eventoRepository.delete(eventoToDelete);
+      setIsDeleteEventoModalOpen(false);
+      setEventoToDelete(null);
       loadData();
     } catch (error) {
-      console.info('Error updating reserva:', error.message);
-      alert('Error al actualizar la reserva');
+      console.info('Error deleting evento:', error.message);
+      setIsDeleteEventoModalOpen(false);
+      setEventoToDelete(null);
+      alert('Error al eliminar el evento');
     }
+  };
+
+  const handleEventoFormSuccess = () => {
+    loadData();
+  };
+
+  const handleCloseEventoForm = () => {
+    setIsEventoFormOpen(false);
+    setSelectedEvento(null);
   };
 
   if (loading) {
@@ -303,6 +441,7 @@ const Admin = () => {
                   { key: 'users', icon: <FaUsers size={16} />, label: 'Usuarios' },
                   { key: 'canchas', icon: <FaFutbol size={16} />, label: 'Canchas' },
                   { key: 'reservas', icon: <FaCalendarCheck size={16} />, label: 'Reservas' },
+                  { key: 'eventos', icon: <FaCalendarCheck size={16} />, label: 'Eventos' },
                   { key: 'home', icon: <FaHome size={16} />, label: 'Contenido Home' },
                 ].map(item => (
                   <button
@@ -366,7 +505,10 @@ const Admin = () => {
                                 <td className="py-2 pr-4">{userItem.nombreCompleto || 'Sin nombre'}</td>
                                 <td className="py-2 pr-4">{userItem.email}</td>
                                 <td className="py-2 pr-4">
-                                  <Chip color={userItem.esAdmin ? 'danger' : 'primary'} size="sm">
+                                  <Chip 
+                                    className={userItem.esAdmin ? 'bg-green-800 text-white' : 'bg-blue-100 text-blue-700'} 
+                                    size="sm"
+                                  >
                                     {userItem.esAdmin ? 'Admin' : 'Usuario'}
                                   </Chip>
                                 </td>
@@ -443,9 +585,12 @@ const Admin = () => {
                             <td className="py-2 pr-4">#{userItem.id.slice(0, 8)}</td>
                             <td className="py-2 pr-4">{userItem.nombreCompleto || 'Sin nombre'}</td>
                             <td className="py-2 pr-4">{userItem.email}</td>
-                            <td className="py-2 pr-4">{userItem.telefono || 'N/A'}</td>
+                            <td className="py-2 pr-4">{formatPhoneNumber(userItem.telefono)}</td>
                             <td className="py-2 pr-4">
-                              <Chip color={userItem.esAdmin ? 'danger' : 'primary'} size="sm">
+                              <Chip 
+                                className={userItem.esAdmin ? 'bg-green-800 text-white' : 'bg-blue-100 text-blue-700'} 
+                                size="sm"
+                              >
                                 {userItem.esAdmin ? 'Admin' : 'Usuario'}
                               </Chip>
                             </td>
@@ -502,7 +647,10 @@ const Admin = () => {
                         )}
                         <div className="flex items-start justify-between mb-2">
                           <h5 className="m-0">{cancha.nombre || 'Sin nombre'}</h5>
-                          <Chip color={cancha.activo ? 'success' : 'default'} size="sm">
+                          <Chip 
+                            className={cancha.activo ? 'bg-success text-white' : 'bg-default text-default-foreground'} 
+                            size="sm"
+                          >
                             {cancha.activo ? 'Activa' : 'Inactiva'}
                           </Chip>
                         </div>
@@ -549,20 +697,28 @@ const Admin = () => {
 
             {activeTab === 'reservas' && (
               <Card>
-                <div className="flex items-center justify-between border-b px-4 py-3">
-                  <h4 className="m-0">Gestión de Reservas</h4>
-                  <Chip color="primary" size="sm">
-                    Total: {reservas.length}
-                  </Chip>
+                <div className="border-b px-4 py-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <Input
+                      placeholder="Buscar por usuario, cancha, email, estado..."
+                      value={reservaSearchTerm}
+                      onValueChange={setReservaSearchTerm}
+                      className="flex-1 max-w-md"
+                      startContent={<FaSearch />}
+                    />
+                    <Chip className="bg-primary text-white" size="sm">
+                      Total: {filteredReservas.length} / {reservas.length}
+                    </Chip>
+                  </div>
                 </div>
-                <div className="p-4 overflow-x-auto">
+                <div className="p-4">
+                <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead className="text-left text-gray-600">
                       <tr>
                         <th className="py-2 pr-4">ID</th>
                         <th className="py-2 pr-4">Usuario</th>
                         <th className="py-2 pr-4">Cancha</th>
-                        <th className="py-2 pr-4">Fecha</th>
                         <th className="py-2 pr-4">Hora</th>
                         <th className="py-2 pr-4">Duración</th>
                         <th className="py-2 pr-4">Total</th>
@@ -571,81 +727,195 @@ const Admin = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {reservas.length === 0 ? (
+                      {filteredReservas.length === 0 ? (
                         <tr>
-                          <td colSpan="10" className="text-center py-8 text-gray-500">
-                            No hay reservas registradas
+                          <td colSpan="8" className="text-center py-8 text-gray-500">
+                            {reservaSearchTerm ? 'No se encontraron reservas que coincidan con la búsqueda' : 'No hay reservas registradas'}
                           </td>
                         </tr>
                       ) : (
-                        reservas.map(reserva => (
-                          <tr key={reserva.id} className="border-t">
-                            <td className="py-2 pr-4">#{reserva.id.slice(0, 8)}</td>
-                            <td className="py-2 pr-4">
-                              <div className="flex items-center gap-3">
-                                {reserva.userPhoto ? (
-                                  <img 
-                                    src={reserva.userPhoto} 
-                                    alt={reserva.userName}
-                                    className="w-10 h-10 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-semibold text-sm">
-                                    {reserva.userName.charAt(0).toUpperCase()}
-                                  </div>
-                                )}
-                                <div>
-                                  <div className="font-medium">{reserva.userName}</div>
-                                  <small className="text-gray-500">{reserva.userEmail}</small>
+                        groupReservasByDate(filteredReservas).map(({ fecha, reservas: reservasFecha }) => (
+                          <React.Fragment key={fecha}>
+                            <tr className="bg-gray-100 border-t border-b-2 border-gray-300">
+                              <td colSpan="8" className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  <FaCalendarCheck className="text-primary" />
+                                  <span className="font-semibold text-gray-700">{formatDate(fecha)}</span>
+                                  <span className="text-gray-500 text-xs">({reservasFecha.length} {reservasFecha.length === 1 ? 'reserva' : 'reservas'})</span>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="py-2 pr-4">{reserva.canchaName}</td>
-                            <td className="py-2 pr-4">{formatDate(reserva.date)}</td>
-                            <td className="py-2 pr-4">{reserva.startTime}</td>
-                            <td className="py-2 pr-4">{reserva.duration}h</td>
-                            <td className="py-2 pr-4">{formatCurrency(reserva.total)}</td>
-                            <td className="py-2 pr-4">
-                              <Chip 
-                                color={reserva.estadoPago === 'pagado' ? 'success' : reserva.estadoPago === 'cancelado' ? 'danger' : 'warning'} 
-                                size="sm"
-                              >
-                                {reserva.estadoPago === 'pagado' ? 'Pagado' : reserva.estadoPago === 'cancelado' ? 'Cancelado' : 'Pendiente'}
-                              </Chip>
-                            </td>
-                            <td className="py-2 pr-4">
-                              <div className="flex gap-2">
-                                <Button 
-                                  size="sm" 
-                                  variant="bordered" 
-                                  color="primary"
-                                  onPress={() => handleViewReservaDetails(reserva)}
-                                >
-                                  <FaEye />
-                                </Button>
-                                <Button 
-                                  size="sm" 
-                                  variant="bordered" 
-                                  color="success"
-                                  onPress={() => handleEditReserva(reserva)}
-                                >
-                                  <FaEdit />
-                                </Button>
-                                <Button 
-                                  size="sm" 
-                                  variant="bordered" 
-                                  color="danger"
-                                  onPress={() => handleDeleteReservaClick(reserva.id)}
-                                >
-                                  <FaTrash />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
+                              </td>
+                            </tr>
+                            {reservasFecha.map(reserva => (
+                              <tr key={reserva.id} className="border-t">
+                                <td className="py-2 pr-4">#{reserva.id.slice(0, 8)}</td>
+                                <td className="py-2 pr-4">
+                                  <div className="flex items-center gap-3">
+                                    {reserva.userPhoto ? (
+                                      <img 
+                                        src={reserva.userPhoto} 
+                                        alt={reserva.userName}
+                                        className="w-10 h-10 rounded-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-semibold text-sm">
+                                        {reserva.userName.charAt(0).toUpperCase()}
+                                      </div>
+                                    )}
+                                    <div>
+                                      <div className="font-medium">{reserva.userName}</div>
+                                      <small className="text-gray-500">{reserva.userEmail}</small>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-2 pr-4">{reserva.canchaName}</td>
+                                <td className="py-2 pr-4">{reserva.startTime}</td>
+                                <td className="py-2 pr-4">{reserva.duration}h</td>
+                                <td className="py-2 pr-4">{formatCurrency(reserva.total)}</td>
+                                <td className="py-2 pr-4">
+                                  <Chip 
+                                    color={reserva.estadoPago === 'pagado' ? 'success' : reserva.estadoPago === 'cancelado' ? 'danger' : 'warning'} 
+                                    size="sm"
+                                  >
+                                    {reserva.estadoPago === 'pagado' ? 'Pagado' : reserva.estadoPago === 'cancelado' ? 'Cancelado' : 'Pendiente'}
+                                  </Chip>
+                                </td>
+                                <td className="py-2 pr-4">
+                                  <Dropdown>
+                                    <DropdownTrigger>
+                                      <Button 
+                                        size="sm" 
+                                        variant="light"
+                                        isIconOnly
+                                        className="min-w-0"
+                                      >
+                                        <FaEllipsisV />
+                                      </Button>
+                                    </DropdownTrigger>
+                                    <DropdownMenu aria-label="Acciones de reserva">
+                                      <DropdownItem 
+                                        key="view"
+                                        startContent={<FaEye />}
+                                        onPress={() => handleViewReservaDetails(reserva)}
+                                      >
+                                        Ver Detalles
+                                      </DropdownItem>
+                                      <DropdownItem 
+                                        key="edit"
+                                        startContent={<FaEdit />}
+                                        onPress={() => handleEditReserva(reserva)}
+                                      >
+                                        Editar
+                                      </DropdownItem>
+                                      <DropdownItem 
+                                        key="delete"
+                                        className="text-danger"
+                                        color="danger"
+                                        startContent={<FaTrash />}
+                                        onPress={() => handleDeleteReservaClick(reserva.id)}
+                                      >
+                                        Eliminar
+                                      </DropdownItem>
+                                    </DropdownMenu>
+                                  </Dropdown>
+                                </td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
                         ))
                       )}
                     </tbody>
                   </table>
+                </div>
+                </div>
+              </Card>
+            )}
+
+            {activeTab === 'eventos' && (
+              <Card>
+                <div className="flex items-center justify-between border-b px-4 py-3">
+                  <h4 className="m-0">Gestión de Eventos</h4>
+                  <Button 
+                    color="white" 
+                    className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50" 
+                    size="sm" 
+                    onPress={handleCreateEvento}
+                  >
+                    <FaPlus className="mr-1" />
+                    Nuevo Evento
+                  </Button>
+                </div>
+                <div className="p-4">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="text-left text-gray-600">
+                        <tr>
+                          <th className="py-2 pr-4">ID</th>
+                          <th className="py-2 pr-4">Nombre</th>
+                          <th className="py-2 pr-4">Cancha</th>
+                          <th className="py-2 pr-4">Fecha</th>
+                          <th className="py-2 pr-4">Hora Inicio</th>
+                          <th className="py-2 pr-4">Hora Fin</th>
+                          <th className="py-2 pr-4">Estado</th>
+                          <th className="py-2 pr-4">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {eventos.length === 0 ? (
+                          <tr>
+                            <td colSpan="8" className="py-8 text-center text-gray-500">
+                              No hay eventos registrados
+                            </td>
+                          </tr>
+                        ) : (
+                          eventos.map(evento => (
+                            <tr key={evento.id} className="border-t">
+                              <td className="py-2 pr-4">#{evento.id.slice(0, 8)}</td>
+                              <td className="py-2 pr-4">
+                                <div>
+                                  <div className="font-medium">{evento.nombre}</div>
+                                  {evento.descripcion && (
+                                    <small className="text-gray-500">{evento.descripcion.substring(0, 50)}...</small>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2 pr-4">{evento.canchaName}</td>
+                              <td className="py-2 pr-4">{formatDate(evento.fecha)}</td>
+                              <td className="py-2 pr-4">{formatTime12h(evento.horaInicio)}</td>
+                              <td className="py-2 pr-4">{formatTime12h(evento.horaFin)}</td>
+                              <td className="py-2 pr-4">
+                                <Chip 
+                                  className={evento.activo ? 'bg-success text-white' : 'bg-default text-default-foreground'} 
+                                  size="sm"
+                                >
+                                  {evento.activo ? 'Activo' : 'Inactivo'}
+                                </Chip>
+                              </td>
+                              <td className="py-2 pr-4">
+                                <div className="flex gap-2">
+                                  <Button 
+                                    size="sm" 
+                                    variant="bordered" 
+                                    color="success"
+                                    onPress={() => handleEditEvento(evento)}
+                                  >
+                                    <FaEdit />
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="bordered" 
+                                    color="danger"
+                                    onPress={() => handleDeleteEventoClick(evento.id)}
+                                  >
+                                    <FaTrash />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </Card>
             )}
@@ -725,6 +995,13 @@ const Admin = () => {
         onClose={handleCloseCanchaForm}
         cancha={selectedCancha}
         onSuccess={handleCanchaFormSuccess}
+      />
+
+      <EventoForm
+        isOpen={isEventoFormOpen}
+        onClose={handleCloseEventoForm}
+        evento={selectedEvento}
+        onSuccess={handleEventoFormSuccess}
       />
 
       <StepsForm
@@ -852,81 +1129,14 @@ const Admin = () => {
         </ModalContent>
       </Modal>
 
-      {/* Modal de Edición de Reserva */}
-      <Modal isOpen={isReservaEditModalOpen} onClose={() => setIsReservaEditModalOpen(false)} size="2xl" scrollBehavior="inside">
-        <ModalContent>
-          <ModalHeader>
-            <h3 className="text-xl font-semibold">Editar Reserva</h3>
-          </ModalHeader>
-          <ModalBody>
-            {editingReserva && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    type="date"
-                    label="Fecha"
-                    value={editingReserva.fecha}
-                    onValueChange={(value) => setEditingReserva({ ...editingReserva, fecha: value })}
-                  />
-                  <Input
-                    type="time"
-                    label="Hora de Inicio"
-                    value={editingReserva.horaInicio}
-                    onValueChange={(value) => setEditingReserva({ ...editingReserva, horaInicio: value })}
-                  />
-                  <Input
-                    type="time"
-                    label="Hora de Fin"
-                    value={editingReserva.horaFin}
-                    onValueChange={(value) => setEditingReserva({ ...editingReserva, horaFin: value })}
-                  />
-                  <Input
-                    type="number"
-                    label="Precio Total"
-                    value={String(editingReserva.precioTotal)}
-                    onValueChange={(value) => setEditingReserva({ ...editingReserva, precioTotal: parseFloat(value) || 0 })}
-                  />
-                  <Select
-                    label="Estado de Pago"
-                    selectedKeys={[editingReserva.estadoPago]}
-                    onSelectionChange={(keys) => {
-                      const estado = Array.from(keys)[0];
-                      setEditingReserva({ ...editingReserva, estadoPago: estado });
-                    }}
-                  >
-                    <SelectItem key="pendiente" value="pendiente">Pendiente</SelectItem>
-                    <SelectItem key="pagado" value="pagado">Pagado</SelectItem>
-                    <SelectItem key="cancelado" value="cancelado">Cancelado</SelectItem>
-                  </Select>
-                  <Input
-                    label="Método de Pago"
-                    value={editingReserva.metodoPago}
-                    onValueChange={(value) => setEditingReserva({ ...editingReserva, metodoPago: value })}
-                    placeholder="Efectivo, Tarjeta, etc."
-                  />
-                </div>
-                <Textarea
-                  label="Notas"
-                  value={editingReserva.notas}
-                  onValueChange={(value) => setEditingReserva({ ...editingReserva, notas: value })}
-                  placeholder="Notas adicionales..."
-                  minRows={3}
-                />
-              </div>
-            )}
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="light" onPress={() => setIsReservaEditModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button color="success" onPress={handleSaveReservaEdit}>
-              Guardar Cambios
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <ReservaForm
+        isOpen={isReservaEditModalOpen}
+        onClose={handleCloseReservaForm}
+        reserva={editingReserva}
+        onSuccess={handleReservaFormSuccess}
+      />
 
-      {/* Modal de Confirmación de Eliminación */}
+      {/* Modal de Confirmación de Eliminación de Reserva */}
       <Modal isOpen={isDeleteConfirmModalOpen} onClose={() => setIsDeleteConfirmModalOpen(false)}>
         <ModalContent>
           <ModalHeader>
@@ -941,6 +1151,27 @@ const Admin = () => {
               Cancelar
             </Button>
             <Button color="danger" onPress={handleConfirmDeleteReserva}>
+              Eliminar
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Modal de Confirmación de Eliminación de Evento */}
+      <Modal isOpen={isDeleteEventoModalOpen} onClose={() => setIsDeleteEventoModalOpen(false)}>
+        <ModalContent>
+          <ModalHeader>
+            <h3 className="text-xl font-semibold">Confirmar Eliminación</h3>
+          </ModalHeader>
+          <ModalBody>
+            <p>¿Estás seguro de que quieres eliminar este evento?</p>
+            <p className="text-sm text-gray-500">Esta acción no se puede deshacer.</p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={() => setIsDeleteEventoModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button color="danger" onPress={handleConfirmDeleteEvento}>
               Eliminar
             </Button>
           </ModalFooter>
