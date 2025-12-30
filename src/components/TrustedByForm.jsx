@@ -12,8 +12,10 @@ import {
 import { FaPlus, FaTrash, FaSave, FaImage } from 'react-icons/fa';
 import { HomeContentRepository } from '../repositories/HomeContent.repository.js';
 import { StorageService } from '../services/Storage.service.js';
+import { useAuth } from '../contexts/AuthContext.jsx';
 
 const TrustedByForm = ({ isOpen, onClose, onSuccess }) => {
+  const { user, isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -49,19 +51,61 @@ const TrustedByForm = ({ isOpen, onClose, onSuccess }) => {
     setLogos(newLogos);
   };
 
+  // Convertir imagen a WebP
+  const convertToWebP = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          
+          canvas.toBlob(
+            (webpBlob) => {
+              if (webpBlob) {
+                resolve(webpBlob);
+              } else {
+                reject(new Error('Error al convertir a WebP'));
+              }
+            },
+            'image/webp',
+            0.85 // Calidad del 85% para balance entre tamaño y calidad
+          );
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleImageUpload = async (index, file) => {
     if (!file || !file.type.startsWith('image/')) {
       return;
     }
 
+    // Verificar autenticación antes de subir
+    if (!isAuthenticated || !user) {
+      setError('Debes estar autenticado para subir imágenes');
+      return;
+    }
+
     setUploadingImages(prev => ({ ...prev, [index]: true }));
     try {
-      const imagePath = storageService.generateImagePath('trustedBy', `logo_${index}_${Date.now()}`, 'jpg');
-      const imageUrl = await storageService.uploadImage(file, imagePath);
+      // Convertir a WebP antes de subir
+      const webpBlob = await convertToWebP(file);
+      const timestamp = Date.now();
+      const imagePath = `trustedBy/logo_${index}_${timestamp}.webp`;
+      const imageUrl = await storageService.uploadImageFromBlob(webpBlob, imagePath);
       handleLogoChange(index, 'src', imageUrl);
     } catch (err) {
       console.info('Error uploading image:', err.message);
-      setError('Error al subir la imagen');
+      setError(`Error al subir la imagen: ${err.message}`);
     } finally {
       setUploadingImages(prev => ({ ...prev, [index]: false }));
     }

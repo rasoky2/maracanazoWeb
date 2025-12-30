@@ -10,18 +10,29 @@ import {
   Textarea,
   Select,
   SelectItem,
-  Switch
+  Switch,
+  Spinner
 } from '@heroui/react';
+import { FaImage } from 'react-icons/fa';
 import { EventoRepository } from '../repositories/Evento.repository.js';
 import { CanchaRepository } from '../repositories/Cancha.repository.js';
+import { StorageService } from '../services/Storage.service.js';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import ImageCropper from './ImageCropper.jsx';
+import { cropTo16x9 } from '../utils/cropTo16x9.js';
 
 const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
+  const { user, isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [canchas, setCanchas] = useState([]);
   const [selectedCancha, setSelectedCancha] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [cropperOpen, setCropperOpen] = useState(false);
+  const [cropperFile, setCropperFile] = useState(null);
   const eventoRepository = new EventoRepository();
   const canchaRepository = new CanchaRepository();
+  const storageService = new StorageService();
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -30,7 +41,8 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
     fecha: '',
     horaInicio: '',
     horaFin: '',
-    activo: true
+    activo: true,
+    imagen: ''
   });
 
   useEffect(() => {
@@ -44,7 +56,8 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
           fecha: evento.fecha || '',
           horaInicio: evento.horaInicio || '',
           horaFin: evento.horaFin || '',
-          activo: evento.activo !== undefined ? evento.activo : true
+          activo: evento.activo !== undefined ? evento.activo : true,
+          imagen: evento.imagen || ''
         });
       } else {
         setFormData({
@@ -54,7 +67,8 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
           fecha: '',
           horaInicio: '',
           horaFin: '',
-          activo: true
+          activo: true,
+          imagen: ''
         });
       }
       setError('');
@@ -68,6 +82,14 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
         try {
           const canchaData = await canchaRepository.getById(formData.idCancha);
           setSelectedCancha(canchaData);
+          
+          // Si no hay imagen y la cancha tiene imagen, usar la de la cancha
+          if (!formData.imagen && (canchaData.imagenPrincipal || canchaData.imagen)) {
+            setFormData(prev => ({
+              ...prev,
+              imagen: canchaData.imagenPrincipal || canchaData.imagen || ''
+            }));
+          }
         } catch (err) {
           console.info('Error loading selected cancha:', err);
           setSelectedCancha(null);
@@ -96,6 +118,76 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
     }));
   };
 
+  const convertToWebP = async (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          
+          canvas.toBlob(
+            (webpBlob) => {
+              if (webpBlob) {
+                resolve(webpBlob);
+              } else {
+                reject(new Error('Error al convertir a WebP'));
+              }
+            },
+            'image/webp',
+            0.85
+          );
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const handleFileSelect = (file) => {
+    if (!file || !file.type.startsWith('image/')) {
+      setError('Por favor selecciona un archivo de imagen válido');
+      return;
+    }
+
+    if (!isAuthenticated || !user) {
+      setError('Debes estar autenticado para subir imágenes');
+      return;
+    }
+
+    setCropperFile(file);
+    setCropperOpen(true);
+  };
+
+  const handleCropComplete = async (croppedBlob) => {
+    if (!croppedBlob) return;
+
+    setUploadingImage(true);
+    try {
+      // Recortar a 16:9 automáticamente
+      const cropped16x9 = await cropTo16x9(croppedBlob);
+      // Convertir a WebP
+      const webpBlob = await convertToWebP(cropped16x9);
+      const timestamp = Date.now();
+      const imagePath = `eventos/evento_${timestamp}.webp`;
+      const imageUrl = await storageService.uploadImageFromBlob(webpBlob, imagePath);
+      handleInputChange('imagen', imageUrl);
+    } catch (err) {
+      console.info('Error uploading image:', err.message);
+      setError(`Error al subir la imagen: ${err.message}`);
+    } finally {
+      setUploadingImage(false);
+      setCropperOpen(false);
+      setCropperFile(null);
+    }
+  };
+
   const validateForm = () => {
     if (!formData.nombre.trim()) {
       setError('El nombre del evento es requerido');
@@ -109,12 +201,18 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
       setError('La fecha es requerida');
       return false;
     }
-    // Validar que la fecha no sea pasada
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selectedDate = new Date(formData.fecha);
+    // Validar que la fecha no sea pasada usando zona horaria de Lima
+    const now = new Date();
+    const limaToday = new Date(now.toLocaleString('en-US', { timeZone: 'America/Lima' }));
+    limaToday.setHours(0, 0, 0, 0);
+    
+    // Parsear la fecha seleccionada (formato YYYY-MM-DD)
+    const [year, month, day] = formData.fecha.split('-').map(Number);
+    const selectedDate = new Date();
+    selectedDate.setFullYear(year, month - 1, day);
     selectedDate.setHours(0, 0, 0, 0);
-    if (selectedDate < today) {
+    
+    if (selectedDate < limaToday) {
       setError('No se puede seleccionar una fecha pasada');
       return false;
     }
@@ -151,10 +249,21 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
     setError('');
 
     try {
+      // Si no hay imagen y hay cancha seleccionada, usar imagen de la cancha
+      let imagenFinal = formData.imagen;
+      if (!imagenFinal && selectedCancha) {
+        imagenFinal = selectedCancha.imagenPrincipal || selectedCancha.imagen || '';
+      }
+
+      const eventoData = {
+        ...formData,
+        imagen: imagenFinal
+      };
+
       if (evento) {
-        await eventoRepository.update(evento.id, formData);
+        await eventoRepository.update(evento.id, eventoData);
       } else {
-        await eventoRepository.create(formData);
+        await eventoRepository.create(eventoData);
       }
       
       if (onSuccess) {
@@ -216,6 +325,61 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
               ))}
             </Select>
 
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Imagen del Evento (16:9)</label>
+              <div className="flex items-center gap-3">
+                {formData.imagen ? (
+                  <img
+                    src={formData.imagen}
+                    alt="Imagen del evento"
+                    className="w-48 h-27 object-cover rounded-lg border border-gray-300 bg-gray-50"
+                    style={{ aspectRatio: '16/9' }}
+                  />
+                ) : (
+                  <div className="w-48 h-27 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50" style={{ aspectRatio: '16/9' }}>
+                    {uploadingImage ? (
+                      <Spinner size="sm" />
+                    ) : (
+                      <FaImage className="text-gray-400" size={24} />
+                    )}
+                  </div>
+                )}
+                
+                <div className="flex-1 space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={e => handleFileSelect(e.target.files?.[0])}
+                      className="hidden"
+                      id="evento-image-upload"
+                    />
+                    <Button
+                      as="label"
+                      htmlFor="evento-image-upload"
+                      size="sm"
+                      variant="bordered"
+                      startContent={<FaImage />}
+                      isDisabled={uploadingImage}
+                    >
+                      {formData.imagen ? 'Cambiar' : 'Subir'} Imagen
+                    </Button>
+                  </div>
+                  <Input
+                    label="URL (Alternativa)"
+                    value={formData.imagen}
+                    onChange={e => handleInputChange('imagen', e.target.value)}
+                    placeholder="https://..."
+                  />
+                  {!formData.imagen && selectedCancha && (
+                    <p className="text-xs text-gray-500">
+                      Si no subes una imagen, se usará la imagen de la cancha seleccionada
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {selectedCancha && (
               <div className="flex flex-col items-center p-4 rounded-lg border border-gray-200 bg-gray-50">
                 <img 
@@ -253,7 +417,15 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
               type="date"
               value={formData.fecha}
               onChange={(e) => handleInputChange('fecha', e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
+              min={(() => {
+                // Obtener fecha actual en zona horaria de Lima
+                const now = new Date();
+                const limaDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/Lima' }));
+                const year = limaDate.getFullYear();
+                const month = String(limaDate.getMonth() + 1).padStart(2, '0');
+                const day = String(limaDate.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+              })()}
               isRequired
             />
 
@@ -329,6 +501,17 @@ const EventoForm = ({ isOpen, onClose, evento = null, onSuccess }) => {
           </Button>
         </ModalFooter>
       </ModalContent>
+      
+      <ImageCropper
+        isOpen={cropperOpen}
+        onClose={() => {
+          setCropperOpen(false);
+          setCropperFile(null);
+        }}
+        imageFile={cropperFile}
+        onCropComplete={handleCropComplete}
+        aspectRatio={16 / 9}
+      />
     </Modal>
   );
 };

@@ -1,0 +1,19 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Permitir lectura pública de todas las imágenes
+    match /{allPaths=**} {
+      allow read: if true;
+    }
+    
+    // Permitir escritura en canchas/ solo para usuarios autenticados
+    match /canchas/{allPaths=**} {
+      allow write: if request.auth != null;
+    }
+    
+    // Permitir escritura en otras carpetas solo para usuarios autenticados
+    match /{allPaths=**} {
+      allow write: if request.auth != null;
+    }
+  }
+}

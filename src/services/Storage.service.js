@@ -21,6 +21,18 @@ export class StorageService {
     }
   }
 
+  async uploadVideo(file, path, basePathOverride = null) {
+    try {
+      const base = basePathOverride || this.basePath;
+      const storageRef = ref(storage, `${base}/${path}`);
+      await uploadBytes(storageRef, file);
+      return await getDownloadURL(storageRef);
+    } catch (error) {
+      console.info('Error uploading video:', error.message);
+      throw new Error('Error al subir el video: ' + error.message);
+    }
+  }
+
   async uploadImageFromBlob(blob, path, basePathOverride = null) {
     try {
       const base = basePathOverride || this.basePath;

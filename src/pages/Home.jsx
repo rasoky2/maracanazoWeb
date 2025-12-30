@@ -7,14 +7,49 @@ import Laptop from '../components/Home/Laptop';
 import TrustedBy from '../components/Home/TrustedBy';
 import { CanchaRepository } from '../repositories/Cancha.repository.js';
 import { ReservaRepository } from '../repositories/Reserva.repository.js';
-import { HomeContentRepository } from '../repositories/HomeContent.repository.js';
+import { EventoRepository } from '../repositories/Evento.repository.js';
 import { 
   FaClock, 
   FaCheckCircle,
   FaInstagram,
   FaTiktok,
-  FaStar
+  FaStar,
+  FaCalendarCheck
 } from 'react-icons/fa';
+
+// Obtener los próximos 3 días desde hoy en zona horaria de Lima (UTC-5)
+const getNext3Days = () => {
+  // Obtener fecha actual en zona horaria de Lima
+  const now = new Date();
+  const limaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Lima' }));
+  
+  const next3Days = [];
+  
+  for (let i = 0; i < 3; i++) {
+    const date = new Date(limaTime);
+    date.setDate(limaTime.getDate() + i);
+    
+    // Obtener día de la semana en zona horaria de Lima
+    const dayIndex = date.getDay();
+    
+    // Mapear índice del día a nombre
+    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    
+    // Formatear fecha en formato YYYY-MM-DD usando zona horaria de Lima
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const formattedDate = `${year}-${month}-${day}`;
+    
+    next3Days.push({
+      name: dayNames[dayIndex],
+      date: formattedDate,
+      dayIndex: dayIndex
+    });
+  }
+  
+  return next3Days;
+};
 
 const Home = () => {
   const days = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
@@ -40,28 +75,30 @@ const Home = () => {
   
   const [canchas, setCanchas] = useState([]);
   const [selectedCanchaId, setSelectedCanchaId] = useState('');
-  const [selectedDay, setSelectedDay] = useState('Lunes');
+  const [next3Days] = useState(() => getNext3Days());
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const days = getNext3Days();
+    return days[0]?.name || 'Lunes';
+  });
   const [reservas, setReservas] = useState([]);
+  const [eventos, setEventos] = useState([]);
   const [loadingCanchas, setLoadingCanchas] = useState(true);
   const [loadingReservas, setLoadingReservas] = useState(false);
-  const [featuredDiscounts, setFeaturedDiscounts] = useState([]);
-  const [discountsSectionInfo, setDiscountsSectionInfo] = useState({
-    title: 'Descuentos Increíbles Disponibles Esta Semana!',
-    subtitle: 'No te pierdas nuestras ofertas especiales en reservas de canchas.'
-  });
-  const [loadingDiscounts, setLoadingDiscounts] = useState(true);
+  const [featuredEventos, setFeaturedEventos] = useState([]);
+  const [loadingEventos, setLoadingEventos] = useState(true);
   const canchaRepository = new CanchaRepository();
   const reservaRepository = new ReservaRepository();
-  const homeContentRepository = new HomeContentRepository();
+  const eventoRepository = new EventoRepository();
 
   useEffect(() => {
     loadCanchas();
-    loadFeaturedDiscounts();
+    loadFeaturedEventos();
   }, []);
 
   useEffect(() => {
     if (selectedCanchaId && selectedDay) {
       loadReservas();
+      loadEventos();
     }
   }, [selectedCanchaId, selectedDay]);
 
@@ -84,8 +121,17 @@ const Home = () => {
   const DAYS_IN_WEEK = 7;
 
   const getDateForDay = dayName => {
-    const today = new Date();
-    const currentDay = today.getDay();
+    // Buscar el día en los próximos 3 días (ya calculados con zona horaria de Lima)
+    const dayInfo = next3Days.find(d => d.name === dayName);
+    
+    if (dayInfo) {
+      return dayInfo.date;
+    }
+    
+    // Fallback: calcular usando zona horaria de Lima
+    const now = new Date();
+    const limaTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Lima' }));
+    const currentDay = limaTime.getDay();
     const targetDay = dayMap[dayName];
     let daysUntilTarget = targetDay - currentDay;
     
@@ -93,9 +139,13 @@ const Home = () => {
       daysUntilTarget += DAYS_IN_WEEK;
     }
     
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + daysUntilTarget);
-    return targetDate.toISOString().split('T')[0];
+    const targetDate = new Date(limaTime);
+    targetDate.setDate(limaTime.getDate() + daysUntilTarget);
+    
+    const year = targetDate.getFullYear();
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const day = String(targetDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const loadReservas = async () => {
@@ -116,20 +166,44 @@ const Home = () => {
     }
   };
 
+  const loadEventos = async () => {
+    if (!selectedCanchaId) {
+      return;
+    }
+    
+    try {
+      const date = getDateForDay(selectedDay);
+      const eventosData = await eventoRepository.getByCanchaAndDate(selectedCanchaId, date);
+      // Filtrar solo eventos activos
+      const eventosActivos = eventosData.filter(evento => evento.activo === true);
+      setEventos(eventosActivos);
+    } catch (err) {
+      console.info('Error loading eventos:', err.message);
+      setEventos([]);
+    }
+  };
+
   const timeToMinutes = time => {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
   };
 
   const isTimeSlotAvailable = (startTime, endTime) => {
-    if (reservas.length === 0) {
-      return true;
-    }
-    
     const startMinutes = timeToMinutes(startTime);
     const endMinutes = timeToMinutes(endTime);
     
-    return !reservas.some(reserva => {
+    // Verificar si está ocupado por reservas (solo pendientes y pagadas, excluir canceladas)
+    const estaOcupadoPorReserva = reservas.some(reserva => {
+      // Solo considerar reservas con estado válido (pendiente o pagado)
+      if (!reserva.estadoPago || (reserva.estadoPago !== 'pendiente' && reserva.estadoPago !== 'pagado')) {
+        return false;
+      }
+      
+      // Validar que tenga horas válidas
+      if (!reserva.horaInicio || !reserva.horaFin) {
+        return false;
+      }
+      
       const reservaStartMinutes = timeToMinutes(reserva.horaInicio);
       const reservaEndMinutes = timeToMinutes(reserva.horaFin);
       
@@ -139,6 +213,24 @@ const Home = () => {
         (startMinutes <= reservaStartMinutes && endMinutes >= reservaEndMinutes)
       );
     });
+    
+    // Verificar si está ocupado por eventos activos
+    const estaOcupadoPorEvento = eventos.some(evento => {
+      if (!evento.activo || !evento.horaInicio || !evento.horaFin) {
+        return false;
+      }
+      
+      const eventoStartMinutes = timeToMinutes(evento.horaInicio);
+      const eventoEndMinutes = timeToMinutes(evento.horaFin);
+      
+      return (
+        (startMinutes >= eventoStartMinutes && startMinutes < eventoEndMinutes) ||
+        (endMinutes > eventoStartMinutes && endMinutes <= eventoEndMinutes) ||
+        (startMinutes <= eventoStartMinutes && endMinutes >= eventoEndMinutes)
+      );
+    });
+    
+    return !estaOcupadoPorReserva && !estaOcupadoPorEvento;
   };
 
   const HALF_DAY_HOURS = 12;
@@ -196,6 +288,53 @@ const Home = () => {
     };
   };
 
+  // Obtener hora actual en zona horaria de Lima
+  const getCurrentLimaTime = () => {
+    const now = new Date();
+    const limaDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/Lima' }));
+    
+    const year = limaDate.getFullYear();
+    const month = String(limaDate.getMonth() + 1).padStart(2, '0');
+    const day = String(limaDate.getDate()).padStart(2, '0');
+    const hour = limaDate.getHours();
+    const minute = limaDate.getMinutes();
+    
+    return {
+      date: `${year}-${month}-${day}`,
+      hour: hour,
+      minute: minute
+    };
+  };
+
+  // Obtener precio para una hora específica
+  const getPriceForHour = (hour, cancha) => {
+    if (!cancha) return 0;
+    
+    const weeklyKey = dayToWeeklyPricingKey[selectedDay];
+    const basePrecios = cancha?.preciosSemanales?.[weeklyKey] || cancha?.precios;
+    const manana = basePrecios?.manana;
+    const noche = basePrecios?.noche;
+    
+    if (!manana) return 0;
+    
+    // Determinar si es horario de mañana o noche
+    const mananaStart = parseInt(manana.inicio.split(':')[0], 10);
+    const mananaEnd = manana.fin === '00:00' ? 24 : parseInt(manana.fin.split(':')[0], 10);
+    
+    if (hour >= mananaStart && hour < mananaEnd) {
+      return manana.precio;
+    } else if (noche) {
+      const nocheStart = parseInt(noche.inicio.split(':')[0], 10);
+      const nocheEnd = noche.fin === '00:00' ? 24 : parseInt(noche.fin.split(':')[0], 10);
+      if (hour >= nocheStart || hour < nocheEnd) {
+        return noche.precio;
+      }
+    }
+    
+    return manana.precio; // Default
+  };
+
+  // Construir bloques de las próximas 3 horas disponibles
   const buildScheduleBlocks = cancha => {
     if (!cancha) {
       return [];
@@ -208,14 +347,60 @@ const Home = () => {
       return [];
     }
     
-    const noche = basePrecios?.noche;
-    const isAllDay = manana.fin === '00:00' || !noche || noche.precio === manana.precio;
-    const blocks = [buildMorningBlock(manana, isAllDay)];
-
-    if (!isAllDay && noche) {
-      blocks.push(buildEveningBlock(noche));
+    const limaTime = getCurrentLimaTime();
+    const selectedDate = getDateForDay(selectedDay);
+    const isToday = selectedDate === limaTime.date;
+    
+    const blocks = [];
+    let startHour;
+    
+    if (isToday) {
+      // Si es hoy, empezar desde la próxima hora (redondeando hacia arriba)
+      startHour = limaTime.minute > 0 ? limaTime.hour + 1 : limaTime.hour + 1;
+      // Asegurar que sea al menos la próxima hora completa
+      if (startHour <= limaTime.hour) {
+        startHour = limaTime.hour + 1;
+      }
+      // Limitar a máximo 23 horas
+      if (startHour >= 24) {
+        return []; // No hay horas disponibles hoy
+      }
+    } else {
+      // Si es día futuro, empezar desde las 5 AM o la primera hora disponible
+      const mananaStart = parseInt(manana.inicio.split(':')[0], 10);
+      startHour = Math.max(5, mananaStart);
     }
-
+    
+    // Buscar las próximas 3 horas DISPONIBLES (saltándose las ocupadas)
+    let hour = startHour;
+    let foundCount = 0;
+    const maxHours = 24; // Límite máximo de horas a revisar
+    
+    while (foundCount < 3 && hour < maxHours) {
+      const startTime = `${String(hour).padStart(2, '0')}:00`;
+      const endTime = hour === 23 ? '23:59' : `${String(hour + 1).padStart(2, '0')}:00`;
+      
+      const available = isTimeSlotAvailable(startTime, endTime);
+      
+      // Solo agregar si está disponible
+      if (available) {
+        const price = getPriceForHour(hour, cancha);
+        
+        blocks.push({
+          timeRange: `${formatHourLabel(startTime)} - ${formatHourLabel(endTime)}`,
+          price: price,
+          label: `Hora ${formatHourLabel(startTime)}`,
+          available: true,
+          startTime: startTime,
+          endTime: endTime
+        });
+        
+        foundCount++;
+      }
+      
+      hour++;
+    }
+    
     return blocks;
   };
 
@@ -228,21 +413,69 @@ const Home = () => {
     setSelectedDay(day);
   };
 
-  const loadFeaturedDiscounts = async () => {
+  const loadFeaturedEventos = async () => {
     try {
-      setLoadingDiscounts(true);
-      const [discounts, sectionInfo] = await Promise.all([
-        homeContentRepository.getFeaturedDiscounts(),
-        homeContentRepository.getDiscountsSectionInfo()
+      setLoadingEventos(true);
+      const [eventosData, canchasData] = await Promise.all([
+        eventoRepository.getAll(),
+        canchaRepository.getAll()
       ]);
-      setFeaturedDiscounts(discounts);
-      setDiscountsSectionInfo(sectionInfo);
+      
+      // Filtrar eventos activos y futuros
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const eventosActivos = eventosData
+        .filter(evento => {
+          if (!evento.activo) return false;
+          const eventoFecha = new Date(evento.fecha);
+          eventoFecha.setHours(0, 0, 0, 0);
+          return eventoFecha >= today;
+        })
+        .sort((a, b) => {
+          const fechaA = new Date(`${a.fecha}T${a.horaInicio}`);
+          const fechaB = new Date(`${b.fecha}T${b.horaInicio}`);
+          return fechaA - fechaB;
+        })
+        .slice(0, 6); // Limitar a 6 eventos más recientes
+      
+      // Enriquecer eventos con datos de cancha
+      const eventosEnriquecidos = eventosActivos.map((evento) => {
+        const cancha = canchasData.find(c => c.id === evento.idCancha);
+        // Usar imagen del evento si existe, sino usar imagen de la cancha
+        const eventoImagen = evento.imagen || cancha?.imagenPrincipal || cancha?.imagen || '/images/futbol1.jpg';
+        return {
+          ...evento,
+          canchaName: cancha?.nombre || cancha?.name || 'Cancha no encontrada',
+          canchaImage: cancha?.imagenPrincipal || cancha?.imagen || '/images/futbol1.jpg',
+          eventoImagen: eventoImagen
+        };
+      });
+      
+      setFeaturedEventos(eventosEnriquecidos);
     } catch (error) {
-      console.info('Error loading featured discounts:', error.message);
-      setFeaturedDiscounts([]);
+      console.info('Error loading featured eventos:', error.message);
+      setFeaturedEventos([]);
     } finally {
-      setLoadingDiscounts(false);
+      setLoadingEventos(false);
     }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('es-PE', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
+
+  const formatTime = (time) => {
+    if (!time) return 'N/A';
+    const [hours, minutes] = time.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
 
   const selectedCancha = canchas.find(c => c.id === selectedCanchaId);
@@ -333,6 +566,43 @@ const Home = () => {
                     <div className="mb-4">
                       <h5 className="mb-3 font-semibold">Reservas del día</h5>
                       
+                      {selectedCancha && (
+                        <div className="mb-3 relative rounded-lg overflow-hidden">
+                          <img 
+                            src={selectedCancha.imagenPrincipal || selectedCancha.imagen || '/images/futbol1.jpg'}
+                            alt={selectedCancha.nombre || selectedCancha.name || 'Cancha'}
+                            className="w-full h-32 object-cover"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+                          <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
+                            <h6 className="font-semibold text-sm mb-1">{selectedCancha.nombre || selectedCancha.name || 'Cancha'}</h6>
+                            {(() => {
+                              const weeklyKey = dayToWeeklyPricingKey[selectedDay];
+                              const basePrecios = selectedCancha?.preciosSemanales?.[weeklyKey] || selectedCancha?.precios;
+                              const manana = basePrecios?.manana;
+                              const noche = basePrecios?.noche;
+                              
+                              if (!manana) return null;
+                              
+                              if (manana.fin === '00:00' || !noche || noche.precio === manana.precio) {
+                                return (
+                                  <div className="text-xs opacity-90">
+                                    Desde S/ {manana.precio}
+                                  </div>
+                                );
+                              }
+                              
+                              return (
+                                <div className="text-xs opacity-90 flex gap-2">
+                                  <span>Día: S/ {manana.precio}</span>
+                                  <span>Noche: S/ {noche.precio}</span>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                      
                       <div className="mb-3">
                         <Select
                           label="Seleccionar Cancha"
@@ -357,21 +627,25 @@ const Home = () => {
                       </div>
 
                       <div className="mb-3">
-                        <div className="text-sm text-gray-600 mb-2">Día de la semana</div>
+                        <div className="text-sm text-gray-600 mb-2">Próximos días disponibles</div>
                         <div className="flex flex-wrap gap-2">
-                          {days.map(day => (
-                            <button
-                              key={`day-${day}`}
-                              type="button"
-                              onClick={() => handleDayChange(day)}
-                              className={`px-3 py-1 rounded-full text-sm border transition-colors ${
-                                selectedDay === day ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                              }`}
-                              aria-pressed={selectedDay === day}
-                            >
-                              {day}
-                            </button>
-                          ))}
+                          {next3Days.map((dayInfo, index) => {
+                            const isToday = index === 0;
+                            const displayName = isToday ? `${dayInfo.name} (Hoy)` : dayInfo.name;
+                            return (
+                              <button
+                                key={`day-${dayInfo.name}-${dayInfo.date}`}
+                                type="button"
+                                onClick={() => handleDayChange(dayInfo.name)}
+                                className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+                                  selectedDay === dayInfo.name ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                }`}
+                                aria-pressed={selectedDay === dayInfo.name}
+                              >
+                                {displayName}
+                              </button>
+                            );
+                          })}
                         </div>
                         {selectedCanchaId && (
                           <p className="text-xs text-gray-500 mt-2">
@@ -398,43 +672,30 @@ const Home = () => {
                           {scheduleBlocks.map(block => (
                         <div 
                           key={block.timeRange} 
-                              className={`flex items-center justify-between p-2 rounded-lg transition-all ${
-                                block.available ? 'bg-gray-50 hover:bg-gray-100' : 'bg-red-50 opacity-75'
-                          }`}
+                              className="flex items-center justify-between p-2 rounded-lg transition-all bg-gray-50 hover:bg-gray-100"
                         >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <FaClock size={14} className={block.available ? 'text-gray-600 flex-shrink-0' : 'text-red-500 flex-shrink-0'} />
+                                <FaClock size={14} className="text-gray-600 flex-shrink-0" />
                                 <span className="font-medium text-sm whitespace-nowrap">{block.label}</span>
                             <Chip 
-                              color={block.available ? 'success' : 'danger'} 
+                              color="success" 
                               size="sm"
                                   className="text-xs"
                             >
                               {block.timeRange}
                             </Chip>
-                            {!block.available && (
-                                  <Chip color="danger" size="sm" variant="flat" className="text-xs">Ocupado</Chip>
-                            )}
                           </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
-                                <span className="font-semibold text-success text-sm whitespace-nowrap">S/ {block.price}<span className="text-xs text-gray-500">/h</span></span>
-                            {block.available ? (
                               <Link to={`/reserva/${selectedCanchaId}`}>
-                                    <Button color="success" size="sm" className="flex items-center gap-1 rounded-full px-3 text-xs h-7 min-w-fit">
+                                    <Button 
+                                      color="success" 
+                                      size="sm" 
+                                      className="flex items-center gap-1 rounded-full px-3 text-xs h-7 min-w-fit text-white [&>span]:text-white"
+                                    >
                                       <FaCheckCircle size={12} />
                                       <span className="hidden sm:inline">Reservar</span>
                                 </Button>
                               </Link>
-                            ) : (
-                              <Button 
-                                color="default" 
-                                size="sm" 
-                                    className="flex items-center gap-1 rounded-full px-3 text-xs h-7 min-w-fit"
-                                isDisabled
-                              >
-                                No disponible
-                              </Button>
-                            )}
                           </div>
                         </div>
                           ))}
@@ -454,22 +715,22 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Discounts Section */}
+      {/* Eventos Section */}
       <section className="py-16 bg-gray-50">
         <div className="mx-auto max-w-7xl px-4">
           <motion.div className="text-center mb-10" initial={{opacity: 0, y: 12}} whileInView={{opacity: 1, y: 0}} viewport={{once: true}} transition={{duration: 0.35}}>
-            <h2 className="text-3xl md:text-4xl font-bold mb-3">{discountsSectionInfo.title}</h2>
-            <p className="text-lg text-gray-600">{discountsSectionInfo.subtitle}</p>
+            <h2 className="text-3xl md:text-4xl font-bold mb-3">Próximos Eventos</h2>
+            <p className="text-lg text-gray-600">No te pierdas nuestros eventos deportivos especiales</p>
           </motion.div>
-          {loadingDiscounts ? (
+          {loadingEventos ? (
             <div className="flex justify-center py-10">
               <Spinner color="success" size="lg" />
             </div>
-          ) : featuredDiscounts.length > 0 ? (
+          ) : featuredEventos.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {featuredDiscounts.map((discount, idx) => (
+              {featuredEventos.map((evento, idx) => (
                 <motion.div 
-                  key={discount.id || `discount-${idx}`}
+                  key={evento.id || `evento-${idx}`}
                   initial={{opacity: 0, y: 20}} 
                   whileInView={{opacity: 1, y: 0}} 
                   viewport={{once: true}} 
@@ -479,31 +740,31 @@ const Home = () => {
                   <Card className="h-full rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer">
                     <div className="overflow-hidden">
                       <img 
-                        src={discount.imagen || discount.image || '/images/futbol1.jpg'} 
-                        alt={discount.titulo || discount.title || 'Cancha'} 
+                        src={evento.eventoImagen || evento.imagen || evento.canchaImage || '/images/futbol1.jpg'} 
+                        alt={evento.nombre || 'Evento'} 
                         className="w-full h-52 object-cover group-hover:scale-110 transition-transform duration-500" 
                       />
                     </div>
                     <div className="p-6">
-                      <h3 className="font-semibold text-xl">{discount.titulo || discount.title || 'Cancha'}</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Tiempo: {discount.horario || discount.time || '07:00 - 17:00'}
-                      </p>
-                      <div className="flex items-center justify-between mb-3 mt-3">
-                        <span className="text-2xl font-bold text-success">
-                          S/ {discount.precio || discount.price || '0.00'}
-                        </span>
-                        {discount.rating && (
-                          <span className="text-gray-500 text-sm flex items-center gap-1">
-                            <FaStar className="text-yellow-400" /> {discount.rating} {discount.reviews && `| ${discount.reviews}+ reseñas`}
-                          </span>
-                        )}
+                      <h3 className="font-semibold text-xl mb-2">{evento.nombre || 'Evento'}</h3>
+                      {evento.descripcion && (
+                        <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                          {evento.descripcion}
+                        </p>
+                      )}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <FaCalendarCheck size={14} />
+                          <span>{formatDate(evento.fecha)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <FaClock size={14} />
+                          <span>{formatTime(evento.horaInicio)} - {formatTime(evento.horaFin)}</span>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          <span className="font-medium">Cancha:</span> {evento.canchaName}
+                        </div>
                       </div>
-                      <Link to={discount.link || discount.canchaId ? `/reserva/${discount.canchaId}` : '/canchas'}>
-                        <Button color="success" className="w-full rounded-full group-hover:scale-105 transition-transform">
-                          {discount.botonTexto || discount.buttonText || 'Reservar Ahora'}
-                        </Button>
-                      </Link>
                     </div>
                   </Card>
                 </motion.div>
@@ -511,7 +772,7 @@ const Home = () => {
             </div>
           ) : (
             <div className="text-center py-10 text-gray-500">
-              <p>No hay descuentos destacados disponibles en este momento.</p>
+              <p>No hay eventos destacados disponibles en este momento.</p>
             </div>
           )}
         </div>

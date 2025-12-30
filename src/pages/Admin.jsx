@@ -20,6 +20,7 @@ import { UserRepository } from '../repositories/User.repository.js';
 import { CanchaRepository } from '../repositories/Cancha.repository.js';
 import { ReservaRepository } from '../repositories/Reserva.repository.js';
 import { EventoRepository } from '../repositories/Evento.repository.js';
+import { HomeContentRepository } from '../repositories/HomeContent.repository.js';
 import CanchaForm from '../components/CanchaForm.jsx';
 import EventoForm from '../components/EventoForm.jsx';
 import ReservaForm from '../components/ReservaForm.jsx';
@@ -57,16 +58,38 @@ const Admin = () => {
   const [selectedEvento, setSelectedEvento] = useState(null);
   const [isDeleteEventoModalOpen, setIsDeleteEventoModalOpen] = useState(false);
   const [eventoToDelete, setEventoToDelete] = useState(null);
+  const [steps, setSteps] = useState([]);
+  const [loadingSteps, setLoadingSteps] = useState(false);
 
   // Repositorios
   const userRepository = new UserRepository();
   const canchaRepository = new CanchaRepository();
   const reservaRepository = new ReservaRepository();
   const eventoRepository = new EventoRepository();
+  const homeContentRepository = new HomeContentRepository();
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'home') {
+      loadSteps();
+    }
+  }, [activeTab]);
+
+  const loadSteps = async () => {
+    setLoadingSteps(true);
+    try {
+      const stepsData = await homeContentRepository.getSteps();
+      setSteps(stepsData || []);
+    } catch (error) {
+      console.info('Error loading steps:', error.message);
+      setSteps([]);
+    } finally {
+      setLoadingSteps(false);
+    }
+  };
 
   const calculateDuration = (horaInicio, horaFin) => {
     const [startHours, startMinutes] = horaInicio.split(':').map(Number);
@@ -310,9 +333,9 @@ const Admin = () => {
   };
 
   const handleReservaFormSuccess = () => {
-    setIsReservaEditModalOpen(false);
-    setEditingReserva(null);
-    loadData();
+      setIsReservaEditModalOpen(false);
+      setEditingReserva(null);
+      loadData();
   };
 
   const handleCloseReservaForm = () => {
@@ -708,8 +731,8 @@ const Admin = () => {
                     />
                     <Chip className="bg-primary text-white" size="sm">
                       Total: {filteredReservas.length} / {reservas.length}
-                    </Chip>
-                  </div>
+                  </Chip>
+                </div>
                 </div>
                 <div className="p-4">
                 <div className="overflow-x-auto">
@@ -746,50 +769,50 @@ const Admin = () => {
                               </td>
                             </tr>
                             {reservasFecha.map(reserva => (
-                              <tr key={reserva.id} className="border-t">
-                                <td className="py-2 pr-4">#{reserva.id.slice(0, 8)}</td>
-                                <td className="py-2 pr-4">
-                                  <div className="flex items-center gap-3">
-                                    {reserva.userPhoto ? (
-                                      <img 
-                                        src={reserva.userPhoto} 
-                                        alt={reserva.userName}
-                                        className="w-10 h-10 rounded-full object-cover"
-                                      />
-                                    ) : (
-                                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-semibold text-sm">
-                                        {reserva.userName.charAt(0).toUpperCase()}
-                                      </div>
-                                    )}
-                                    <div>
-                                      <div className="font-medium">{reserva.userName}</div>
-                                      <small className="text-gray-500">{reserva.userEmail}</small>
-                                    </div>
+                          <tr key={reserva.id} className="border-t">
+                            <td className="py-2 pr-4">#{reserva.id.slice(0, 8)}</td>
+                            <td className="py-2 pr-4">
+                              <div className="flex items-center gap-3">
+                                {reserva.userPhoto ? (
+                                  <img 
+                                    src={reserva.userPhoto} 
+                                    alt={reserva.userName}
+                                    className="w-10 h-10 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-semibold text-sm">
+                                    {reserva.userName.charAt(0).toUpperCase()}
                                   </div>
-                                </td>
-                                <td className="py-2 pr-4">{reserva.canchaName}</td>
-                                <td className="py-2 pr-4">{reserva.startTime}</td>
-                                <td className="py-2 pr-4">{reserva.duration}h</td>
-                                <td className="py-2 pr-4">{formatCurrency(reserva.total)}</td>
-                                <td className="py-2 pr-4">
-                                  <Chip 
-                                    color={reserva.estadoPago === 'pagado' ? 'success' : reserva.estadoPago === 'cancelado' ? 'danger' : 'warning'} 
-                                    size="sm"
-                                  >
-                                    {reserva.estadoPago === 'pagado' ? 'Pagado' : reserva.estadoPago === 'cancelado' ? 'Cancelado' : 'Pendiente'}
-                                  </Chip>
-                                </td>
-                                <td className="py-2 pr-4">
+                                )}
+                                <div>
+                                  <div className="font-medium">{reserva.userName}</div>
+                                  <small className="text-gray-500">{reserva.userEmail}</small>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-2 pr-4">{reserva.canchaName}</td>
+                            <td className="py-2 pr-4">{reserva.startTime}</td>
+                            <td className="py-2 pr-4">{reserva.duration}h</td>
+                            <td className="py-2 pr-4">{formatCurrency(reserva.total)}</td>
+                            <td className="py-2 pr-4">
+                              <Chip 
+                                color={reserva.estadoPago === 'pagado' ? 'success' : reserva.estadoPago === 'cancelado' ? 'danger' : 'warning'} 
+                                size="sm"
+                              >
+                                {reserva.estadoPago === 'pagado' ? 'Pagado' : reserva.estadoPago === 'cancelado' ? 'Cancelado' : 'Pendiente'}
+                              </Chip>
+                            </td>
+                            <td className="py-2 pr-4">
                                   <Dropdown>
                                     <DropdownTrigger>
-                                      <Button 
-                                        size="sm" 
+                                <Button 
+                                  size="sm" 
                                         variant="light"
                                         isIconOnly
                                         className="min-w-0"
-                                      >
+                                >
                                         <FaEllipsisV />
-                                      </Button>
+                                </Button>
                                     </DropdownTrigger>
                                     <DropdownMenu aria-label="Acciones de reserva">
                                       <DropdownItem 
@@ -802,23 +825,23 @@ const Admin = () => {
                                       <DropdownItem 
                                         key="edit"
                                         startContent={<FaEdit />}
-                                        onPress={() => handleEditReserva(reserva)}
-                                      >
+                                  onPress={() => handleEditReserva(reserva)}
+                                >
                                         Editar
                                       </DropdownItem>
                                       <DropdownItem 
                                         key="delete"
                                         className="text-danger"
-                                        color="danger"
+                                  color="danger"
                                         startContent={<FaTrash />}
-                                        onPress={() => handleDeleteReservaClick(reserva.id)}
-                                      >
+                                  onPress={() => handleDeleteReservaClick(reserva.id)}
+                                >
                                         Eliminar
                                       </DropdownItem>
                                     </DropdownMenu>
                                   </Dropdown>
-                                </td>
-                              </tr>
+                            </td>
+                          </tr>
                             ))}
                           </React.Fragment>
                         ))
@@ -928,18 +951,69 @@ const Admin = () => {
                       <h4 className="m-0">Pasos del Home</h4>
                       <p className="text-sm text-gray-500 m-0">Gestiona los pasos que se muestran en la sección Steps</p>
                     </div>
-                    <Button color="primary" size="sm" onPress={() => setIsStepsFormOpen(true)}>
+                    <Button 
+                      color="primary" 
+                      size="sm" 
+                      onPress={() => setIsStepsFormOpen(true)}
+                      className="text-white [&>span]:text-white"
+                    >
                       <FaEdit className="mr-1" />
                       Editar Pasos
                     </Button>
                   </div>
                   <div className="p-4">
-                    <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                      <div className="flex items-center gap-2">
-                        <FaHome />
-                        <span>Edita los videos, títulos y descripciones de los pasos del proceso de reserva.</span>
+                    {loadingSteps ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Spinner size="sm" />
                       </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <FaHome />
+                            <span>Edita los videos, títulos y descripciones de los pasos del proceso de reserva.</span>
+                          </div>
+                        </div>
+                        <div className="mt-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Chip color="primary" size="sm" className="text-white">
+                              {steps.length} {steps.length === 1 ? 'Paso configurado' : 'Pasos configurados'}
+                            </Chip>
+                          </div>
+                          {steps.length > 0 ? (
+                            <div className="space-y-2">
+                              {steps.map((step, index) => (
+                                <div key={index} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-semibold text-sm">
+                                      {index + 1}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <h5 className="font-semibold text-gray-900 mb-1 truncate">{step.title || 'Sin título'}</h5>
+                                      <p className="text-sm text-gray-600 line-clamp-2">{step.desc || 'Sin descripción'}</p>
+                                      {step.imagen && (
+                                        <div className="mt-2">
+                                          <img 
+                                            src={step.imagen} 
+                                            alt={step.title || `Paso ${index + 1}`}
+                                            className="w-24 h-16 object-cover rounded border border-gray-300"
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-6 text-gray-500">
+                              <p>No hay pasos configurados aún.</p>
+                              <p className="text-sm mt-1">Haz clic en "Editar Pasos" para agregar contenido.</p>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </Card>
 
@@ -949,7 +1023,12 @@ const Admin = () => {
                       <h4 className="m-0">Logos Confiados</h4>
                       <p className="text-sm text-gray-500 m-0">Gestiona los logos que se muestran en TrustedBy</p>
                     </div>
-                    <Button color="primary" size="sm" onPress={() => setIsTrustedByFormOpen(true)}>
+                    <Button 
+                      color="primary" 
+                      size="sm" 
+                      onPress={() => setIsTrustedByFormOpen(true)}
+                      className="text-white [&>span]:text-white"
+                    >
                       <FaImage className="mr-1" />
                       Editar Logos
                     </Button>
@@ -959,27 +1038,6 @@ const Admin = () => {
                       <div className="flex items-center gap-2">
                         <FaImage />
                         <span>Agrega o edita los logos de clubes y asociaciones que confían en ti.</span>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card>
-                  <div className="flex items-center justify-between border-b px-4 py-3">
-                    <div>
-                      <h4 className="m-0">Videos Deportivos</h4>
-                      <p className="text-sm text-gray-500 m-0">Gestiona los videos que se muestran en la sección Video</p>
-                    </div>
-                    <Button color="primary" size="sm" onPress={() => setIsVideoFormOpen(true)}>
-                      <FaVideo className="mr-1" />
-                      Editar Videos
-                    </Button>
-                  </div>
-                  <div className="p-4">
-                    <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                      <div className="flex items-center gap-2">
-                        <FaVideo />
-                        <span>Edita los videos deportivos, posters y títulos que se muestran en el carrusel.</span>
                       </div>
                     </div>
                   </div>
@@ -1007,7 +1065,10 @@ const Admin = () => {
       <StepsForm
         isOpen={isStepsFormOpen}
         onClose={() => setIsStepsFormOpen(false)}
-        onSuccess={loadData}
+        onSuccess={() => {
+          loadData();
+          loadSteps();
+        }}
       />
 
       <TrustedByForm

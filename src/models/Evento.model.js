@@ -9,6 +9,7 @@ export class Evento {
     this.horaInicio = data.horaInicio || '';
     this.horaFin = data.horaFin || '';
     this.activo = data.activo !== undefined ? data.activo : true;
+    this.imagen = data.imagen || '';
     this.fechaCreacion = data.fechaCreacion || new Date();
     this.fechaActualizacion = data.fechaActualizacion || new Date();
   }
@@ -22,6 +23,7 @@ export class Evento {
       horaInicio: this.horaInicio,
       horaFin: this.horaFin,
       activo: this.activo,
+      imagen: this.imagen,
       fechaCreacion: this.fechaCreacion,
       fechaActualizacion: this.fechaActualizacion
     };

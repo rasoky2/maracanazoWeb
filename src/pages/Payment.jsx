@@ -3,12 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, Button, Input, Textarea, Spinner } from '@heroui/react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { ReservaRepository } from '../repositories/Reserva.repository.js';
+import { EventoRepository } from '../repositories/Evento.repository.js';
 
 const Payment = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const reservaRepository = new ReservaRepository();
+  const eventoRepository = new EventoRepository();
   const [reservation, setReservation] = useState(null);
   const [paymentData, setPaymentData] = useState({
     cardNumber: '',
@@ -20,6 +22,7 @@ const Payment = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   useEffect(() => {
     // Esperar a que termine la carga de autenticación antes de verificar
@@ -114,14 +117,111 @@ const Payment = () => {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     try {
+      // Si es un objeto Firestore Timestamp
       if (dateString.toDate) {
-        return dateString.toDate().toLocaleDateString('es-PE');
+        const date = dateString.toDate();
+        return date.toLocaleDateString('es-PE', { timeZone: 'America/Lima' });
       }
+      
+      // Si es un string en formato YYYY-MM-DD, formatearlo directamente sin convertir a Date
+      if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-');
+        // Formatear directamente como DD/MM/YYYY usando la fecha como está
+        return `${day}/${month}/${year}`;
+      }
+      
+      // Para otros formatos, intentar parsear normalmente
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'N/A';
-      return date.toLocaleDateString('es-PE');
+      
+      // Formatear usando zona horaria de Lima
+      return date.toLocaleDateString('es-PE', { timeZone: 'America/Lima' });
     } catch {
       return 'N/A';
+    }
+  };
+
+  // Convertir tiempo a minutos
+  const timeToMinutes = (time) => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+
+  // Verificar si el horario está disponible antes de procesar el pago
+  const checkAvailability = async () => {
+    if (!reservation || !reservation.idCancha || !reservation.fecha || !reservation.horaInicio || !reservation.horaFin) {
+      return { available: false, reason: 'Datos de reserva incompletos' };
+    }
+
+    try {
+      const fecha = reservation.fecha || reservation.date;
+      const horaInicio = reservation.horaInicio || reservation.time;
+      const horaFin = reservation.horaFin;
+
+      // Cargar reservas y eventos existentes para esa cancha y fecha
+      const [reservasExistentes, eventosExistentes] = await Promise.all([
+        reservaRepository.getByCanchaAndDate(reservation.idCancha, fecha),
+        eventoRepository.getByCanchaAndDate(reservation.idCancha, fecha)
+      ]);
+
+      const reservaStartMinutes = timeToMinutes(horaInicio);
+      const reservaEndMinutes = timeToMinutes(horaFin);
+
+      // Verificar si está ocupado por otra reserva (excluyendo la reserva actual)
+      const estaOcupadoPorReserva = reservasExistentes.some(reserva => {
+        // Excluir la reserva actual si tiene ID
+        if (reservation.id && reserva.id === reservation.id) {
+          return false;
+        }
+
+        // Solo considerar reservas con estado válido (pendiente o pagado)
+        if (!reserva.estadoPago || (reserva.estadoPago !== 'pendiente' && reserva.estadoPago !== 'pagado')) {
+          return false;
+        }
+
+        if (!reserva.horaInicio || !reserva.horaFin) {
+          return false;
+        }
+
+        const reservaStart = timeToMinutes(reserva.horaInicio);
+        const reservaEnd = timeToMinutes(reserva.horaFin);
+
+        return (
+          (reservaStartMinutes >= reservaStart && reservaStartMinutes < reservaEnd) ||
+          (reservaEndMinutes > reservaStart && reservaEndMinutes <= reservaEnd) ||
+          (reservaStartMinutes <= reservaStart && reservaEndMinutes >= reservaEnd)
+        );
+      });
+
+      // Verificar si está ocupado por evento activo
+      const estaOcupadoPorEvento = eventosExistentes.some(evento => {
+        if (!evento.activo || !evento.horaInicio || !evento.horaFin) {
+          return false;
+        }
+
+        const eventoStart = timeToMinutes(evento.horaInicio);
+        const eventoEnd = timeToMinutes(evento.horaFin);
+
+        return (
+          (reservaStartMinutes >= eventoStart && reservaStartMinutes < eventoEnd) ||
+          (reservaEndMinutes > eventoStart && reservaEndMinutes <= eventoEnd) ||
+          (reservaStartMinutes <= eventoStart && reservaEndMinutes >= eventoEnd)
+        );
+      });
+
+      if (estaOcupadoPorReserva) {
+        return { available: false, reason: 'Este horario ya está reservado por otro usuario' };
+      }
+
+      if (estaOcupadoPorEvento) {
+        return { available: false, reason: 'Este horario está ocupado por un evento' };
+      }
+
+      return { available: true };
+    } catch (err) {
+      console.info('Error checking availability:', err);
+      return { available: false, reason: 'Error al verificar disponibilidad' };
     }
   };
 
@@ -142,20 +242,35 @@ const Payment = () => {
 
     setLoading(true);
     setError('');
+    setCheckingAvailability(true);
 
     try {
       if (!reservation || !reservation.id) {
         throw new Error('Reserva no válida');
       }
 
+      // Verificar disponibilidad antes de procesar el pago
+      const availabilityCheck = await checkAvailability();
+      setCheckingAvailability(false);
+
+      if (!availabilityCheck.available) {
+        setError(availabilityCheck.reason || 'Este horario ya no está disponible. Por favor selecciona otro horario.');
+        navigate('/canchas');
+        return;
+      }
+
       // Simular procesamiento de pago
       await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Obtener fecha actual en zona horaria de Lima para fechaActualizacion
+      const now = new Date();
+      const limaDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/Lima' }));
       
       // Actualizar reserva en Firestore con información de pago
       await reservaRepository.update(reservation.id, {
         estadoPago: 'pagado',
         metodoPago: paymentData.cardName ? 'Tarjeta' : 'Efectivo',
-        fechaActualizacion: new Date()
+        fechaActualizacion: limaDate
       });
 
       // Preparar datos para la página de confirmación
@@ -169,6 +284,7 @@ const Payment = () => {
     } catch (err) {
       console.info('Error processing payment:', err);
       setError('Error al procesar el pago. Inténtalo de nuevo.');
+      setCheckingAvailability(false);
     } finally {
       setLoading(false);
     }
@@ -312,15 +428,22 @@ const Payment = () => {
                     <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
                   )}
 
+                  {checkingAvailability && (
+                    <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 flex items-center gap-2">
+                      <Spinner size="sm" />
+                      <span>Verificando disponibilidad del horario...</span>
+                    </div>
+                  )}
+
                   <Button
                     color="success"
                     size="lg"
-                    className="w-full"
+                    className="w-full text-white [&>span]:text-white"
                     onPress={processPayment}
-                    isDisabled={loading}
-                    isLoading={loading}
+                    isDisabled={loading || checkingAvailability}
+                    isLoading={loading || checkingAvailability}
                   >
-                    {loading ? 'Procesando Pago...' : `Pagar S/ ${reservation.total}`}
+                    {checkingAvailability ? 'Verificando...' : loading ? 'Procesando Pago...' : `Pagar S/ ${reservation.total || reservation.precioTotal || 0}`}
                   </Button>
 
                   <div className="text-center">
